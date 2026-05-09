@@ -44,6 +44,22 @@ export type KernelStreamEvent =
       expiresAt: string;
     }
   | {
+      type: "step_up.phone_confirmed";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: "voice_biometric_callback" | "passkey";
+      provider: "elevenlabs" | "manual";
+    }
+  | {
+      type: "step_up.rejected";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: "voice_biometric_callback" | "passkey";
+      reason: "user_denied" | "duress";
+    }
+  | {
       type: "step_up.verified";
       ts: number;
       requestId: string;

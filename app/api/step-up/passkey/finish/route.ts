@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   }
 
   const pending = await kernelRuntime.getPendingStepUp(body.challengeId);
-  if (!pending || pending.status !== "pending" || !pending.authChallenge) {
+  if (!pending || (pending.status !== "pending" && pending.status !== "phone_confirmed") || !pending.authChallenge) {
     return NextResponse.json({ error: "no pending step-up challenge" }, { status: 400 });
   }
 
