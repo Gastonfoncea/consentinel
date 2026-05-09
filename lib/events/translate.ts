@@ -38,6 +38,9 @@ export interface TranslatedRequest {
   statusLabel: string;
   // CTA copy for step-up scenarios.
   actionPrompt?: string;
+  // Set when the kernel asked for a passkey step-up that hasn't been
+  // verified yet. The PendingCard uses this to drive WebAuthn.
+  passkeyChallengeId?: string;
   // Raw events translated to dev-mode lines (for the per-card expand).
   technicalLines: TechnicalLine[];
 }
@@ -45,6 +48,7 @@ export interface TranslatedRequest {
 type RequestStartedEvent = Extract<KernelStreamEvent, { type: "permission.request_started" }>;
 type TraceEvent = Extract<KernelStreamEvent, { type: "permission.trace_event" }>;
 type DecisionEvent = Extract<KernelStreamEvent, { type: "permission.decision_made" }>;
+type StepUpChallengeEvent = Extract<KernelStreamEvent, { type: "step_up.challenge_created" }>;
 type StepUpVerifiedEvent = Extract<KernelStreamEvent, { type: "step_up.verified" }>;
 type WalletExecutedEvent = Extract<KernelStreamEvent, { type: "wallet.transfer_mock_executed" }>;
 type RuntimeErrorEvent = Extract<KernelStreamEvent, { type: "runtime.error" }>;
@@ -150,12 +154,23 @@ export function translateRequest(
     reasoning.push(scenarioLine ?? traceEvents[i].summary);
   }
 
+  // Most recent passkey challenge (if any). We only expose it while
+  // the user still needs to act — once step_up.verified arrives, we
+  // stop offering the button.
+  const passkeyChallenge = [...events]
+    .reverse()
+    .find(
+      (e): e is StepUpChallengeEvent =>
+        e.type === "step_up.challenge_created" && e.channel === "passkey"
+    );
+
   // Status — runtime errors win, then wallet executed, then decision.
   // step_up.verified collapses needs_biometric back into thinking until
   // the wallet event arrives.
   let status: ActivityStatus = "thinking";
   let statusLabel = "Pensando…";
   let actionPrompt: string | undefined;
+  let passkeyChallengeId: string | undefined;
 
   if (runtimeError) {
     status = "blocked";
@@ -184,6 +199,9 @@ export function translateRequest(
         const bio = biometricCopy(method);
         statusLabel = bio.status;
         actionPrompt = bio.action;
+        if (passkeyChallenge) {
+          passkeyChallengeId = passkeyChallenge.challengeId;
+        }
       }
     }
   }
@@ -203,6 +221,7 @@ export function translateRequest(
     status,
     statusLabel,
     actionPrompt,
+    passkeyChallengeId,
     technicalLines,
   };
 }

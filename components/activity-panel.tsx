@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import {
   formatRelativeTime,
@@ -141,8 +142,50 @@ function SectionHeader({
 
 // ---------- Pending (needs action) — protagonista ----------
 
+type VerifyState = "idle" | "verifying" | "error";
+
 function PendingCard({ request }: { request: TranslatedRequest }) {
   const [expanded, setExpanded] = useState(false);
+  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  const challengeId = request.passkeyChallengeId;
+  const canVerify = Boolean(challengeId) && verifyState !== "verifying";
+
+  async function handleVerify() {
+    if (!challengeId) return;
+    setVerifyState("verifying");
+    setError(null);
+    try {
+      const beginRes = await fetch("/api/step-up/passkey/begin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId }),
+      });
+      if (!beginRes.ok) {
+        const err = await beginRes.json().catch(() => ({}));
+        throw new Error(err.error || "failed to start verification");
+      }
+      const options = await beginRes.json();
+
+      const assertion = await startAuthentication(options);
+
+      const finishRes = await fetch("/api/step-up/passkey/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId, response: assertion }),
+      });
+      if (!finishRes.ok) {
+        const err = await finishRes.json().catch(() => ({}));
+        throw new Error(err.error || "verification failed");
+      }
+      // Success path: kernel emits step_up.verified via SSE and the card
+      // moves out of pending automatically. No local state cleanup needed.
+    } catch (err) {
+      setVerifyState("error");
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   return (
     <article className="rounded-2xl border-2 border-stepup/50 bg-stepup/[0.06] p-5 shadow-glow-stepup backdrop-blur-sm">
@@ -175,9 +218,11 @@ function PendingCard({ request }: { request: TranslatedRequest }) {
         <div className="mt-5 flex items-center gap-4">
           <button
             type="button"
-            className="rounded-full bg-stepup px-5 py-2.5 text-sm font-medium text-bg transition hover:bg-stepup/90"
+            onClick={handleVerify}
+            disabled={!canVerify}
+            className="rounded-full bg-stepup px-5 py-2.5 text-sm font-medium text-bg transition hover:bg-stepup/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {request.actionPrompt}
+            {verifyState === "verifying" ? "Verificando…" : request.actionPrompt}
           </button>
           <button
             type="button"
@@ -186,6 +231,12 @@ function PendingCard({ request }: { request: TranslatedRequest }) {
             Rechazar
           </button>
         </div>
+      )}
+
+      {error && (
+        <p className="mt-3 break-words font-mono text-[11px] text-deny">
+          ✗ {error}
+        </p>
       )}
 
       <TechExpand
