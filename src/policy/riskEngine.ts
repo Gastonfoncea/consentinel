@@ -186,6 +186,7 @@ function hardPolicyViolations(
   normalizedX402?: NormalizedX402Context
 ): string[] {
   const violations: string[] = [];
+  const context = request.context;
 
   if (request.action === "share" && request.dataSensitivity === "secret") {
     violations.push("DENY: secret data cannot be shared autonomously.");
@@ -211,7 +212,7 @@ function hardPolicyViolations(
     hasExpectedCounterparty(request) &&
     hasActualCounterparty(request) &&
     !counterpartyMatchesDelegation(request) &&
-    request.context.sourceTrust === "untrusted"
+    context?.sourceTrust === "untrusted"
   ) {
     violations.push("STEP_UP: action diverges from the delegated recipient under untrusted context.");
   }

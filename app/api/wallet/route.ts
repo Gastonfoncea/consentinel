@@ -17,17 +17,21 @@ const RECENT_BLOCK_WINDOW = 2_000n;
 const TX_LIMIT = 8;
 
 export async function GET() {
-  if (!process.env.WALLET_PRIVATE_KEY || !process.env.USDC_CONTRACT) {
-    return NextResponse.json({
-      configured: false,
-      reason: "WALLET_PRIVATE_KEY or USDC_CONTRACT not set in env",
-    });
-  }
-
   try {
     const wallet = await import("@/src/wallet/wallet");
-    const { publicClient, walletAddress, usdcAddress, basescanAddrUrl, basescanTxUrl } =
-      wallet;
+    const availability = wallet.describeWalletAvailability();
+    if (!availability.available) {
+      return NextResponse.json({
+        configured: false,
+        reason: availability.reason,
+        missing: availability.missing,
+      });
+    }
+
+    const publicClient = wallet.getPublicClient();
+    const walletAddress = wallet.getWalletAddress();
+    const usdcAddress = wallet.getUsdcAddress();
+    const { basescanAddrUrl, basescanTxUrl } = wallet;
 
     const [balance, currentBlock] = await Promise.all([
       wallet.getUsdcBalance(),

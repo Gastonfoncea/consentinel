@@ -112,31 +112,27 @@ export class BehaviorGraph {
     const userAgent = this.edgeStrength("user", request.userId, "agent", request.agentId, "delegated_to");
     const agentService = this.edgeStrength("agent", request.agentId, "service", request.service, "called");
     const actionResource = this.edgeStrength("action", request.action, "resource", request.resource, "targets");
+    const counterpartyIdentity = request.counterpartyIdentity;
     const directRouteEdge = request.counterparty
       ? this.getEdge("user", request.userId, "counterparty", request.counterparty, "interacted_with")
       : undefined;
-    const identityEdge = request.counterpartyIdentity
+    const identityEdge = counterpartyIdentity
       ? this.getEdge(
           "user",
           request.userId,
           "counterparty_identity",
-          request.counterpartyIdentity,
+          counterpartyIdentity,
           "trusts_identity"
         )
       : undefined;
     const directRouteFamiliarity = directRouteEdge ? this.edgeStrengthFromStats(directRouteEdge) : 0;
-    const identityFamiliarity = identityEdge
-      ? this.edgeStrength(
-          "user",
-          request.userId,
-          "counterparty_identity",
-          request.counterpartyIdentity,
-          "trusts_identity"
-        )
-      : 0;
+    const identityFamiliarity =
+      counterpartyIdentity && identityEdge
+        ? this.edgeStrength("user", request.userId, "counterparty_identity", counterpartyIdentity, "trusts_identity")
+        : 0;
     const routeTrust = this.deriveRouteTrust(request, directRouteEdge);
     const routeNovelty = request.counterparty && !hasSuccessfulRouteHistory(directRouteEdge) ? 1 : 0;
-    const newRouteForKnownIdentity = Boolean(routeNovelty && request.counterpartyIdentity && identityFamiliarity > 0);
+    const newRouteForKnownIdentity = Boolean(routeNovelty && counterpartyIdentity && identityFamiliarity > 0);
     const routeTrustScore = routeTrust ? routeTrustSignalScore(routeTrust) : 0;
     const identityCarryover = newRouteForKnownIdentity ? identityFamiliarity * 0.22 : 0;
     const counterparty =

@@ -10,16 +10,16 @@ import {
   requestToIntentDriftInput
 } from "./intentDrift.js";
 import { FileIntentDriftCache } from "./intentDriftCache.js";
-import { demoRequests } from "../demoFixtures.js";
+import { demoClaimedNewRoute, demoKnownCounterparty, demoRequests, demoUnknownCounterparty } from "../demoFixtures.js";
 
 const driftInput = {
   originalUserRequest: "Send 20 USDC to Juan for dinner.",
   proposedActionNarrative: "Send 20 USDC to attacker wallet from email thread.",
   source: "email" as const,
   sourceTrust: "untrusted" as const,
-  expectedCounterparty: "0x9f2c...juan",
+  expectedCounterparty: demoKnownCounterparty,
   expectedCounterpartyIdentity: "juan",
-  actualCounterparty: "0x4a8b...evil",
+  actualCounterparty: demoUnknownCounterparty,
   actualCounterpartyIdentity: "mallory",
   expectedAmount: { value: 20, currency: "USDC" },
   actualAmount: { value: 20, currency: "USDC" }
@@ -187,7 +187,7 @@ test("heuristic intent drift stays aligned when the route changes but the counte
     proposedActionNarrative: "Send 20 USDC to Juan using his Optimism wallet.",
     source: "direct_user" as const,
     sourceTrust: "trusted" as const,
-    actualCounterparty: "0x7d31...juan-optimism",
+    actualCounterparty: demoClaimedNewRoute,
     actualCounterpartyIdentity: "juan"
   };
 

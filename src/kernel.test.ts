@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { demoProfile, demoRequests, seedEvents } from "./demoFixtures.js";
+import { demoKnownCounterparty, demoRequests, demoProfile, seedEvents } from "./demoFixtures.js";
 import type { AgentActionRequest, IntentDriftInput, IntentDriftResult } from "./domain/types.js";
 import { PermissionKernel } from "./kernel.js";
 import { FileIntentDriftCache } from "./intent/intentDriftCache.js";
@@ -63,7 +63,7 @@ test("behavior graph query reports familiarity metadata and amount history", () 
     fromKind: "user",
     fromLabel: "user_alba",
     toKind: "counterparty",
-    toLabel: "0x9f2c...juan",
+    toLabel: demoKnownCounterparty,
     relation: "interacted_with"
   });
 
@@ -202,7 +202,7 @@ test("an unknown new route with no known identity still behaves like a new count
   const request: AgentActionRequest = {
     ...demoRequests[1]!,
     requestId: "req_unknown_new_counterparty",
-    counterparty: "0x85aa...new",
+    counterparty: "0x85aa1c2d3e4f5061728394a5b6c7d8e9f0011223",
     counterpartyIdentity: undefined,
     counterpartyRouteTrust: "unknown",
     context: {
