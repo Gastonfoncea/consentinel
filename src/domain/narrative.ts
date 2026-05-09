@@ -11,6 +11,8 @@ export function canonicalizeAction(request: AgentActionRequest): string {
         `trust=${request.context.sourceTrust}`,
         `original_request=${request.context.originalUserRequest ?? "none"}`,
         `expected_counterparty=${request.context.expectedCounterparty ?? "none"}`,
+        `expected_counterparty_identity=${request.context.expectedCounterpartyIdentity ?? "none"}`,
+        `expected_counterparty_route_trust=${request.context.expectedCounterpartyRouteTrust ?? "none"}`,
         `expected_amount=${
           request.context.expectedAmount
             ? `${request.context.expectedAmount.value.toFixed(2)} ${request.context.expectedAmount.currency.toUpperCase()}`
@@ -30,6 +32,8 @@ export function canonicalizeAction(request: AgentActionRequest): string {
     `action=${request.action}`,
     `resource=${request.resource}`,
     `counterparty=${request.counterparty ?? "none"}`,
+    `counterparty_identity=${request.counterpartyIdentity ?? "none"}`,
+    `counterparty_route_trust=${request.counterpartyRouteTrust ?? "none"}`,
     `amount=${amount}`,
     `sensitivity=${request.dataSensitivity}`,
     `reversibility=${request.reversibility}`,
