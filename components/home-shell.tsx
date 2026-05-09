@@ -6,6 +6,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
+import { PushToast } from "@/components/push-toast";
 import { UserMenu } from "@/components/user-menu";
 import { WalletPanel } from "@/components/wallet-panel";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
@@ -128,6 +129,13 @@ export function HomeShell({ username }: HomeShellProps) {
           <ActivityPanel />
         </div>
       </section>
+
+      <PushToast
+        onOpen={(requestId) => {
+          // eslint-disable-next-line no-console
+          console.log("[push-toast] open requested", requestId);
+        }}
+      />
 
       {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
     </main>
