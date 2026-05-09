@@ -1,6 +1,14 @@
 import type { KernelStreamEvent } from "./types";
 
-type Step = Omit<KernelStreamEvent, "ts"> & { delayBefore?: number };
+type StreamStep =
+  | Omit<Extract<KernelStreamEvent, { type: "request" }>, "ts">
+  | Omit<Extract<KernelStreamEvent, { type: "thinking" }>, "ts">
+  | Omit<Extract<KernelStreamEvent, { type: "evidence" }>, "ts">
+  | Omit<Extract<KernelStreamEvent, { type: "decision" }>, "ts">
+  | Omit<Extract<KernelStreamEvent, { type: "step_up" }>, "ts">
+  | Omit<Extract<KernelStreamEvent, { type: "ping" }>, "ts">;
+
+type Step = StreamStep & { delayBefore?: number };
 
 const SCENARIOS: Step[][] = [
   [
