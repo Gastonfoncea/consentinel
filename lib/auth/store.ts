@@ -20,7 +20,17 @@ export interface StoredUser {
   currentChallenge?: string;
 }
 
-const users = new Map<string, StoredUser>();
+declare global {
+  // eslint-disable-next-line no-var
+  var __consentinelUserStore: Map<string, StoredUser> | undefined;
+}
+
+const users: Map<string, StoredUser> =
+  globalThis.__consentinelUserStore ?? new Map<string, StoredUser>();
+
+if (!globalThis.__consentinelUserStore) {
+  globalThis.__consentinelUserStore = users;
+}
 
 function key(username: string): string {
   return username.trim().toLowerCase();

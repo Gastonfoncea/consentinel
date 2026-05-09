@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import type { AuthenticationResponseJSON } from "@simplewebauthn/types";
-import { RP_ID, RP_ORIGIN } from "@/lib/auth/config";
+import { RP_ID, getExpectedOrigin } from "@/lib/auth/config";
 import {
   consumeChallenge,
   findCredentialById,
@@ -51,11 +51,11 @@ export async function POST(req: Request) {
     verification = await verifyAuthenticationResponse({
       response: body.response,
       expectedChallenge,
-      expectedOrigin: RP_ORIGIN,
+      expectedOrigin: getExpectedOrigin(req.headers.get("origin")),
       expectedRPID: RP_ID,
-      credential: {
-        id: credential.id,
-        publicKey: credential.publicKey,
+      authenticator: {
+        credentialID: credential.id,
+        credentialPublicKey: credential.publicKey,
         counter: credential.counter,
         transports: credential.transports,
       },

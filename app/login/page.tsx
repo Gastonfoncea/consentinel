@@ -38,8 +38,8 @@ export default function LoginPage() {
 
       const credential =
         mode === "register"
-          ? await startRegistration({ optionsJSON: options })
-          : await startAuthentication({ optionsJSON: options });
+          ? await startRegistration(options)
+          : await startAuthentication(options);
 
       const finishRes = await fetch(`/api/auth/${mode}/finish`, {
         method: "POST",

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyRegistrationResponse } from "@simplewebauthn/server";
 import type { RegistrationResponseJSON } from "@simplewebauthn/types";
-import { RP_ID, RP_ORIGIN } from "@/lib/auth/config";
+import { RP_ID, getExpectedOrigin } from "@/lib/auth/config";
 import {
   addCredential,
   consumeChallenge,
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     verification = await verifyRegistrationResponse({
       response: body.response,
       expectedChallenge,
-      expectedOrigin: RP_ORIGIN,
+      expectedOrigin: getExpectedOrigin(req.headers.get("origin")),
       expectedRPID: RP_ID,
     });
   } catch (err) {
@@ -56,13 +56,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "verification failed" }, { status: 400 });
   }
 
-  const { credential, credentialDeviceType, credentialBackedUp } =
-    verification.registrationInfo;
+  const {
+    credentialID,
+    credentialPublicKey,
+    counter,
+    credentialDeviceType,
+    credentialBackedUp,
+  } = verification.registrationInfo;
 
   addCredential(user.username, {
-    id: credential.id,
-    publicKey: credential.publicKey,
-    counter: credential.counter,
+    id: credentialID,
+    publicKey: credentialPublicKey,
+    counter,
     transports: body.response.response.transports,
     deviceType: credentialDeviceType,
     backedUp: credentialBackedUp,
