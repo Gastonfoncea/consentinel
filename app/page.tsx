@@ -1,8 +1,13 @@
 import { ChatPanel } from "@/components/chat-panel";
 import { LogPanel } from "@/components/log-panel";
 import { PhoneMock } from "@/components/phone-mock";
+import { UserMenu } from "@/components/user-menu";
+import { getSession } from "@/lib/auth/session";
 
-export default function Home() {
+export default async function Home() {
+  const session = await getSession();
+  const username = session.username ?? "guest";
+
   return (
     <main className="flex min-h-screen flex-col">
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -13,7 +18,7 @@ export default function Home() {
           </span>
           <span className="text-xs text-muted">permission kernel</span>
         </div>
-        <span className="font-mono text-xs text-muted">demo · localhost</span>
+        <UserMenu username={username} />
       </header>
 
       <section className="border-b border-border px-6 py-6">
