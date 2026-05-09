@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWallet, type WalletTx } from "@/lib/hooks/use-wallet";
+import { WalletPendingAction } from "@/components/wallet-pending-action";
+import { WalletTrusted } from "@/components/wallet-trusted";
+import { WalletIncoming } from "@/components/wallet-incoming";
 import { cn } from "@/lib/utils";
 
 export function WalletPanel() {
@@ -25,7 +28,8 @@ export function WalletPanel() {
 
   return (
     <div className="flex h-full flex-col rounded-2xl border border-border bg-surface p-5">
-      <div className="flex items-start justify-between">
+      <WalletPendingAction />
+      <div className="mt-3 flex items-start justify-between">
         <div>
           <p className="font-mono text-[10px] uppercase tracking-wider text-muted">
             wallet · base sepolia
@@ -88,30 +92,34 @@ export function WalletPanel() {
         </p>
       )}
 
-      <div className="mt-5 flex-1 overflow-y-auto">
-        <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted">
-          recent transactions
-        </p>
-        {state?.configured && state.txs.length > 0 ? (
-          <ul className="flex flex-col gap-1.5">
-            <AnimatePresence initial={false}>
-              {state.txs.map((tx) => (
-                <motion.li
-                  key={tx.hash}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                >
-                  <TxRow tx={tx} />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        ) : state?.configured ? (
-          <p className="font-mono text-xs text-muted">no recent activity</p>
-        ) : (
-          <p className="font-mono text-xs text-muted">—</p>
-        )}
+      <div className="mt-5 flex flex-1 flex-col gap-5 overflow-y-auto">
+        <WalletTrusted />
+        <WalletIncoming />
+        <div>
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted">
+            recent transactions · on-chain
+          </p>
+          {state?.configured && state.txs.length > 0 ? (
+            <ul className="flex flex-col gap-1.5">
+              <AnimatePresence initial={false}>
+                {state.txs.map((tx) => (
+                  <motion.li
+                    key={tx.hash}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                  >
+                    <TxRow tx={tx} />
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
+          ) : state?.configured ? (
+            <p className="font-mono text-xs text-muted">no recent activity</p>
+          ) : (
+            <p className="font-mono text-xs text-muted">—</p>
+          )}
+        </div>
       </div>
     </div>
   );

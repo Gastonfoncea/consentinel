@@ -3,7 +3,12 @@ import { getIronSession } from "iron-session";
 import { sessionOptions, type SessionData } from "@/lib/auth/session";
 
 const PUBLIC_PATHS = ["/login"];
-const PUBLIC_API_PREFIXES = ["/api/auth"];
+// /api/elevenlabs/* is public so ElevenLabs server tools (approve_action /
+// deny_action) can POST without a session. The challenge_id binding is
+// unguessable and one-shot, which gives us reasonable replay protection.
+// /api/stream is public so the SSE consumer doesn't need a session for the
+// public-facing demo (the events themselves don't carry secrets).
+const PUBLIC_API_PREFIXES = ["/api/auth", "/api/elevenlabs", "/api/stream"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

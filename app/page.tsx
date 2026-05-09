@@ -1,6 +1,6 @@
 import { ChatPanel } from "@/components/chat-panel";
+import { DemoOrchestrator } from "@/components/demo-orchestrator";
 import { LogPanel } from "@/components/log-panel";
-import { PhoneMock } from "@/components/phone-mock";
 import { UserMenu } from "@/components/user-menu";
 import { WalletPanel } from "@/components/wallet-panel";
 import { getSession } from "@/lib/auth/session";
@@ -23,7 +23,7 @@ export default async function Home() {
       </header>
 
       <section className="grid grid-cols-1 gap-4 border-b border-border px-6 py-6 lg:grid-cols-2">
-        <PhoneMock />
+        <DemoOrchestrator username={username} />
         <WalletPanel />
       </section>
 

@@ -1,4 +1,4 @@
-import { kernelEventStream } from "@/lib/events/simulator";
+import { kernelEventStream } from "@/lib/events/source";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

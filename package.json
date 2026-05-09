@@ -16,6 +16,8 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@elevenlabs/client": "^1.7.0",
+    "@elevenlabs/react": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@simplewebauthn/browser": "^10.0.0",
     "@simplewebauthn/server": "^10.0.1",
