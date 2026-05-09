@@ -1,16 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ActivityPanel } from "@/components/activity-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
+import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
 import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
+import { PushToast } from "@/components/push-toast";
 import { UserMenu } from "@/components/user-menu";
 import { VoiceSession } from "@/components/voice-session";
 import { WalletPanel } from "@/components/wallet-panel";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
+import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
+import { usePushSubscription } from "@/lib/hooks/use-push-subscription";
 import { cn } from "@/lib/utils";
+import { useEffect } from "react";
 
 interface HomeShellProps {
   username: string;
@@ -33,6 +38,27 @@ export function HomeShell({ username }: HomeShellProps) {
   const { state: liveState, pulseSeed } = useBlobState();
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
 
+  // Shared handler for both surfaces (in-app toast + OS notification).
+  // PLA-38 will swap this for the verification modal trigger.
+  const handleStepUpOpen = useCallback((requestId: string) => {
+    // eslint-disable-next-line no-console
+    console.log("[step-up] open requested", requestId);
+  }, []);
+
+  const { permission: notifPermission, requestPermission: requestNotifPermission } =
+    useDesktopNotification({ onOpen: handleStepUpOpen });
+
+  // Once the user accepts OS notifications, also register the service
+  // worker and subscribe to Web Push so the kernel can reach the device
+  // when the browser is closed (PWA on iOS, idle Chrome on desktop, etc.).
+  // The hook is no-op on unsupported browsers and idempotent on repeats.
+  const { subscribe: subscribePush } = usePushSubscription();
+  useEffect(() => {
+    if (notifPermission === "granted") {
+      void subscribePush();
+    }
+  }, [notifPermission, subscribePush]);
+
   const isPreview = previewMode !== "live";
   const blobState: BlobState = isPreview ? previewMode : liveState;
 
@@ -52,11 +78,16 @@ export function HomeShell({ username }: HomeShellProps) {
     // only the activity feed scrolls. Mobile keeps natural page scroll
     // (min-h-screen) since stacking blob + panels vertically needs room.
     <main className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div className="flex items-center gap-3">
+      <NotificationPermissionBanner
+        permission={notifPermission}
+        onRequest={requestNotifPermission}
+      />
+
+      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-3">
           <span
             className={cn(
-              "h-2 w-2 rounded-full transition-colors",
+              "h-2 w-2 shrink-0 rounded-full transition-colors",
               blobState === "deny"
                 ? "bg-deny shadow-glow-deny"
                 : blobState === "verifying"
@@ -67,7 +98,7 @@ export function HomeShell({ username }: HomeShellProps) {
           <span className="font-mono text-sm tracking-wide text-text">
             consentinel
           </span>
-          <span className="text-xs text-muted">
+          <span className="hidden text-xs text-muted sm:inline">
             <span className="text-text">{username}</span>
             <span className="mx-2 text-muted/50">⇄</span>
             <span className="text-muted">myagent</span>
@@ -129,6 +160,8 @@ export function HomeShell({ username }: HomeShellProps) {
           <ActivityPanel />
         </div>
       </section>
+
+      <PushToast onOpen={handleStepUpOpen} />
 
       {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
       <VoiceSession />

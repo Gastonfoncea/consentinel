@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { AgentActionRequest, PermissionDecision, StepUpChallenge, UserTrustProfile } from "../domain/types";
+import {
+  buildHandoffCode,
+  buildSpokenOperationSummary,
+  buildSpokenRiskHint,
+  buildWhatsAppVerificationUrl,
+  composeActionPhrase,
+  deriveUserDisplayName,
+  deriveVerificationUsername
+} from "./presentation";
 
 export class VoiceBiometricStepUp {
   createChallenge(
@@ -14,6 +23,13 @@ export class VoiceBiometricStepUp {
 
     const challengeId = `voice_${randomUUID()}`;
     const expiresAt = new Date(now.getTime() + 4 * 60 * 1000).toISOString();
+    const verificationUsername = deriveVerificationUsername(request);
+    const userDisplayName = deriveUserDisplayName(request, verificationUsername);
+    const spokenOperationSummary = buildSpokenOperationSummary(request);
+    const spokenRiskHint = buildSpokenRiskHint(request);
+    const actionPhrase = composeActionPhrase(spokenOperationSummary, spokenRiskHint);
+    const handoffCode = buildHandoffCode();
+    const whatsappVerificationUrl = buildWhatsAppVerificationUrl(handoffCode);
     const phrase = this.shortPhrase(request, decision.actionHash);
 
     return {
@@ -23,10 +39,20 @@ export class VoiceBiometricStepUp {
       channel: decision.requiredStepUp,
       boundActionHash: decision.actionHash,
       expiresAt,
+      actionPhrase,
+      spokenOperationSummary,
+      spokenRiskHint,
+      userDisplayName,
+      verificationUsername,
+      handoffCode,
+      whatsappVerificationUrl,
+      deliveryChannel: "whatsapp",
       prompt: [
-        `Call the user's verified eSIM route and ask for biometric confirmation.`,
-        `Read: "${phrase}".`,
-        `Only mark verified if the voice/passkey provider signs this exact action hash: ${decision.actionHash}.`
+        `Call the user and validate this operation in plain language: "${actionPhrase}".`,
+        `Tell them we already sent a WhatsApp with the verification link: ${whatsappVerificationUrl}.`,
+        `If they verbally confirm, direct them to finish passkey verification on the web.`,
+        `Read this fallback verification phrase if needed: "${phrase}".`,
+        `Never complete the challenge from the call alone; the app must verify the exact action hash ${decision.actionHash}.`
       ].join(" "),
       deliveryTarget: profile.phoneE164
     };

@@ -163,6 +163,30 @@ function EventLine({ event }: { event: KernelStreamEvent }) {
           <TypedLine text={event.prompt} />
         </div>
       );
+    case "step_up.phone_confirmed":
+      return (
+        <div className="font-mono text-xs text-stepup">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="font-bold drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]">
+            PHONE OK
+          </span>{" "}
+          <TypedLine
+            text={`challenge ${event.challengeId} confirmed by phone via ${event.provider}; waiting for app biometric verification.`}
+          />
+        </div>
+      );
+    case "step_up.rejected":
+      return (
+        <div className="font-mono text-xs text-deny">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="font-bold drop-shadow-[0_0_8px_rgba(255,59,48,0.6)]">
+            REJECTED
+          </span>{" "}
+          <TypedLine
+            text={`challenge ${event.challengeId} rejected via ${event.channel} (${event.reason}).`}
+          />
+        </div>
+      );
     case "step_up.verified":
       return (
         <div className="font-mono text-xs text-allow">

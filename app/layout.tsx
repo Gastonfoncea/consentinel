@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,6 +18,20 @@ export const metadata: Metadata = {
   title: "Consentinel — Permission kernel demo",
   description:
     "Agent-first permission kernel. Behavior graph, vector memory, biometric (FaceID/TouchID/huella) step-up.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Consentinel",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0F1116",
 };
 
 export default function RootLayout({

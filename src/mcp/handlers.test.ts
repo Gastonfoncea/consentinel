@@ -7,11 +7,10 @@ import { demoProfile, demoRequests, demoUnknownCounterparty, seedEvents } from "
 import type { IntentDriftInput, IntentDriftResult, TrackRecordEvent } from "../domain/types.js";
 import { FileDurableEventRepository, FilePendingStepUpRepository } from "../runtime/repositories.js";
 import { KernelRuntime } from "../runtime/runtime.js";
+import { ensureWalletTestEnv } from "../testEnv.js";
 import { assessAgentAction, mockExecuteWalletTransfer, prepareWalletTransfer } from "./handlers.js";
 
-process.env.WALLET_PRIVATE_KEY ??=
-  "0x1111111111111111111111111111111111111111111111111111111111111111";
-process.env.USDC_CONTRACT ??= "0x2222222222222222222222222222222222222222";
+ensureWalletTestEnv();
 
 const deterministicDrift = {
   async evaluate(input: IntentDriftInput): Promise<IntentDriftResult> {

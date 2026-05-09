@@ -26,6 +26,8 @@ As a user with autonomous agents connected to personal services, I want my agent
 - Wallet flows can prepare a real transaction payload before execution.
 - x402 payment context is represented as first-class payment metadata.
 - Step-up is modeled as eSIM/voice biometric callback, not an approval screen.
+- Voice callback can collect only verbal intent; the final authorization still completes in-app via biometric/passkey verification bound to the same challenge.
+- For the MVP handoff, the voice callback is paired with a WhatsApp verification link and a short handoff code that leads to the passkey completion screen.
 - The system explains why an action appears viable or non-viable for the user based on track record and context.
 
 ## Non-Goals For MVP
@@ -75,6 +77,8 @@ For wallet and crypto flows, this expands into a second question:
 - `allow`: familiar and low-risk enough to execute autonomously.
 - `allow_with_audit`: allowed, but important enough to log and explain.
 - `step_up`: action can proceed only after voice/passkey/biometric verification bound to the exact action hash.
+- A voice-first `step_up` remains pending after the call until the user finishes biometric verification in the app; a verbal rejection blocks the action immediately.
+- The phone call must describe the concrete operation being validated in controlled human language, rather than reading a generic static prompt.
 - `deny`: action violates hard policy or has excessive blast radius.
 
 ## Counterparty Identity And Route Trust
