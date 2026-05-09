@@ -1,6 +1,7 @@
 import { mkdir, readFile, appendFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { DurableRuntimeEvent, PendingStepUp } from "./types";
+import { normalizeHandoffCode } from "../stepup/presentation";
 
 interface PendingStepUpFile {
   version: 1;
@@ -20,6 +21,7 @@ export interface DurableEventRepository {
 export interface PendingStepUpRepository {
   list(): Promise<PendingStepUp[]>;
   get(challengeId: string): Promise<PendingStepUp | undefined>;
+  getByHandoffCode(handoffCode: string): Promise<PendingStepUp | undefined>;
   upsert(stepUp: PendingStepUp): Promise<void>;
 }
 
@@ -63,6 +65,12 @@ export class FilePendingStepUpRepository implements PendingStepUpRepository {
   async get(challengeId: string): Promise<PendingStepUp | undefined> {
     const file = await this.load();
     return file.items.find((item) => item.challengeId === challengeId);
+  }
+
+  async getByHandoffCode(handoffCode: string): Promise<PendingStepUp | undefined> {
+    const file = await this.load();
+    const normalized = normalizeHandoffCode(handoffCode);
+    return file.items.find((item) => normalizeHandoffCode(item.handoffCode) === normalized);
   }
 
   async upsert(stepUp: PendingStepUp): Promise<void> {

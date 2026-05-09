@@ -32,6 +32,8 @@ for (const request of demoRequests) {
     const challenge = kernel.createStepUpChallenge(request, decision, new Date("2026-05-09T12:00:00.000Z"));
     console.log(`Step-up channel: ${challenge.channel}`);
     console.log(`Challenge prompt: ${challenge.prompt}`);
+    console.log(`Voice summary: ${challenge.actionPhrase}`);
+    console.log(`WhatsApp handoff: ${challenge.whatsappVerificationUrl} (${challenge.handoffCode})`);
   }
 
   console.log("");

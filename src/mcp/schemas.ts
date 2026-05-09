@@ -56,3 +56,17 @@ export const eventSchema = z.object({
   outcome: z.enum(["allow", "allow_with_audit", "step_up", "deny"]),
   verifiedWith: z.enum(["voice_biometric_callback", "passkey", "none"]).optional()
 });
+
+export const stepUpChallengeIdSchema = z.object({
+  challengeId: z.string()
+});
+
+export const stepUpRejectSchema = z.object({
+  challengeId: z.string(),
+  reason: z.enum(["user_denied", "duress"])
+});
+
+export const phoneConfirmationProviderSchema = z.object({
+  challengeId: z.string(),
+  provider: z.enum(["elevenlabs", "manual"]).optional()
+});

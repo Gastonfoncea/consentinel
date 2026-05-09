@@ -30,8 +30,19 @@ export async function POST(req: Request) {
 
   try {
     const pending = await kernelRuntime.getPendingStepUp(body.challengeId);
-    if (!pending || pending.channel !== "passkey") {
-      return NextResponse.json({ error: "step-up is not configured for passkey" }, { status: 400 });
+    if (!pending) {
+      return NextResponse.json({ error: "unknown step-up challenge" }, { status: 404 });
+    }
+
+    const canBeginInApp =
+      pending.channel === "passkey" ||
+      (pending.channel === "voice_biometric_callback" && pending.status === "phone_confirmed");
+
+    if (!canBeginInApp) {
+      return NextResponse.json(
+        { error: "voice confirmation is still required before app verification can begin" },
+        { status: 400 }
+      );
     }
 
     const options = await generateAuthenticationOptions({

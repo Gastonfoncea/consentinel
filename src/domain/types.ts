@@ -13,6 +13,8 @@ export type DataSensitivity = "public" | "internal" | "personal" | "financial" |
 export type Reversibility = "reversible" | "compensatable" | "irreversible";
 
 export type PermissionOutcome = "allow" | "allow_with_audit" | "step_up" | "deny";
+export type StepUpRejectionReason = "user_denied" | "duress";
+export type StepUpDeliveryChannel = "whatsapp";
 
 export type Conservatism = "fast" | "balanced" | "paranoid";
 
@@ -162,6 +164,14 @@ export interface StepUpChallenge {
   boundActionHash: string;
   expiresAt: string;
   prompt: string;
+  actionPhrase: string;
+  spokenOperationSummary: string;
+  spokenRiskHint?: string;
+  userDisplayName?: string;
+  verificationUsername: string;
+  handoffCode: string;
+  whatsappVerificationUrl: string;
+  deliveryChannel: StepUpDeliveryChannel;
   deliveryTarget?: string;
 }
 
