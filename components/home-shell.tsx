@@ -12,7 +12,9 @@ import { UserMenu } from "@/components/user-menu";
 import { WalletPanel } from "@/components/wallet-panel";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
 import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
+import { usePushSubscription } from "@/lib/hooks/use-push-subscription";
 import { cn } from "@/lib/utils";
+import { useEffect } from "react";
 
 interface HomeShellProps {
   username: string;
@@ -44,6 +46,17 @@ export function HomeShell({ username }: HomeShellProps) {
 
   const { permission: notifPermission, requestPermission: requestNotifPermission } =
     useDesktopNotification({ onOpen: handleStepUpOpen });
+
+  // Once the user accepts OS notifications, also register the service
+  // worker and subscribe to Web Push so the kernel can reach the device
+  // when the browser is closed (PWA on iOS, idle Chrome on desktop, etc.).
+  // The hook is no-op on unsupported browsers and idempotent on repeats.
+  const { subscribe: subscribePush } = usePushSubscription();
+  useEffect(() => {
+    if (notifPermission === "granted") {
+      void subscribePush();
+    }
+  }, [notifPermission, subscribePush]);
 
   const isPreview = previewMode !== "live";
   const blobState: BlobState = isPreview ? previewMode : liveState;
