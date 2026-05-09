@@ -47,7 +47,10 @@ export function HomeShell({ username }: HomeShellProps) {
   };
 
   return (
-    <main className="flex min-h-screen flex-col">
+    // h-screen + overflow-hidden on lg locks the dashboard to the viewport so
+    // only the activity feed scrolls. Mobile keeps natural page scroll
+    // (min-h-screen) since stacking blob + panels vertically needs room.
+    <main className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <div className="flex items-center gap-3">
           <span
@@ -72,11 +75,13 @@ export function HomeShell({ username }: HomeShellProps) {
         <UserMenu username={username} />
       </header>
 
-      <section className="grid flex-1 grid-cols-1 lg:grid-cols-[3fr_2fr]">
-        {/* Left column: blob hero + supporting cards */}
-        <div className="flex flex-col">
+      <section className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
+        {/* Left column: blob hero + supporting cards. lg:flex-[3] keeps the
+            current 3:2 ratio against the activity panel — proportion change
+            comes in a follow-up commit. */}
+        <div className="flex flex-col lg:min-h-0 lg:flex-[3]">
           <div
-            className="relative min-h-[420px] flex-1 overflow-hidden"
+            className="relative min-h-[420px] flex-1 overflow-hidden lg:min-h-0"
             style={{
               backgroundImage:
                 "radial-gradient(ellipse 55% 45% at 50% 42%, rgba(103, 184, 216, 0.10), transparent 70%)",
@@ -117,8 +122,9 @@ export function HomeShell({ username }: HomeShellProps) {
           </div>
         </div>
 
-        {/* Right column: human-readable activity feed */}
-        <div className="border-t border-border lg:border-l lg:border-t-0">
+        {/* Right column: human-readable activity feed. min-h-0 lets the
+            panel's internal overflow-y-auto actually clip + scroll on lg. */}
+        <div className="border-t border-border lg:min-h-0 lg:flex-[2] lg:border-l lg:border-t-0">
           <ActivityPanel />
         </div>
       </section>
