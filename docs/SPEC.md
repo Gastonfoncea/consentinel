@@ -23,6 +23,7 @@ As a user with autonomous agents connected to personal services, I want my agent
 - The behavior graph can distinguish a counterparty identity from a specific wallet/address route.
 - A vector memory retrieves similar historical actions.
 - A risk engine returns `allow`, `allow_with_audit`, `step_up`, or `deny`.
+- Wallet flows can prepare a real transaction payload before execution.
 - x402 payment context is represented as first-class payment metadata.
 - Step-up is modeled as eSIM/voice biometric callback, not an approval screen.
 - The system explains why an action appears viable or non-viable for the user based on track record and context.
@@ -120,5 +121,7 @@ The system should prefer:
 2. An agent requests the expected transfer to the expected recipient: the kernel allows it autonomously.
 3. The same agent proposes a transfer that no longer fits the delegated envelope: different recipient, suspicious source, or unusual amount.
 4. If the recipient is still claimed to be Juan but the wallet is newly introduced, the kernel treats that route as untrusted until verified.
-5. The kernel explains why that action no longer looks viable inside the delegated permission envelope.
-6. The kernel escalates to a voice biometric challenge bound to that exact action, instead of asking for a broad session approval.
+5. When the action is allowed, the system prepares the concrete ERC-20 transfer payload that would be sent onchain.
+6. The kernel explains why that action no longer looks viable inside the delegated permission envelope when it is blocked or escalated.
+7. The kernel escalates to a voice biometric challenge bound to that exact action, instead of asking for a broad session approval.
+8. The final transaction broadcast can remain mocked while the permission decision and prepared payload stay real and auditable.

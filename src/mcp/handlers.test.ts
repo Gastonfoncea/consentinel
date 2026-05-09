@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { demoProfile, demoRequests, seedEvents } from "../demoFixtures.js";
+import {
+  demoProfile,
+  demoRequests,
+  demoUnknownCounterparty,
+  seedEvents
+} from "../demoFixtures.js";
 import type { IntentDriftInput, IntentDriftResult, TrackRecordEvent } from "../domain/types.js";
 import { PermissionKernel } from "../kernel.js";
-import { assessAgentAction, mockExecuteWalletTransfer } from "./handlers.js";
+import { assessAgentAction, mockExecuteWalletTransfer, prepareWalletTransfer } from "./handlers.js";
+
+process.env.WALLET_PRIVATE_KEY ??=
+  "0x1111111111111111111111111111111111111111111111111111111111111111";
+process.env.USDC_CONTRACT ??= "0x2222222222222222222222222222222222222222";
 
 const deterministicDrift = {
   async evaluate(input: IntentDriftInput): Promise<IntentDriftResult> {
@@ -11,9 +20,9 @@ const deterministicDrift = {
   },
   evaluateSync(input: IntentDriftInput): IntentDriftResult {
     return {
-      driftDetected: input.actualCounterparty === "0x4a8b...evil",
+      driftDetected: input.actualCounterparty === demoUnknownCounterparty,
       confidence: 0.81,
-      score: input.actualCounterparty === "0x4a8b...evil" ? 0.76 : 0.1,
+      score: input.actualCounterparty === demoUnknownCounterparty ? 0.76 : 0.1,
       reasoning: "Deterministic test evaluator.",
       provider: "heuristic"
     };
@@ -51,6 +60,18 @@ test("mock wallet transfer executes only after kernel allow path", async () => {
   assert.equal(result.status, "mock_executed");
   assert.equal(result.execution.mode, "mock");
   assert.match(result.execution.hash, /^0x[a-f0-9]{64}$/);
+  assert.equal(result.preparation.asset, "USDC");
+  assert.match(result.preparation.transaction.data, /^0xa9059cbb[a-f0-9]+$/);
+});
+
+test("wallet transfer preparation returns the real ERC-20 payload after kernel allow", async () => {
+  const result = await prepareWalletTransfer(seededKernel(), demoRequests[0]!, new Date("2026-05-09T12:00:00.000Z"));
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "prepared");
+  assert.equal(result.preparation.transaction.to, "0x2222222222222222222222222222222222222222");
+  assert.equal(result.preparation.amountBaseUnits, "20000000");
+  assert.equal(result.preparation.transaction.value, "0x0");
 });
 
 test("mock wallet transfer returns step-up instead of executing for a claimed new wallet", async () => {

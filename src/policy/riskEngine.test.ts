@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PermissionKernel } from "../kernel.js";
-import { demoProfile, seedEvents } from "../demoFixtures.js";
+import { demoKnownCounterparty, demoProfile, demoUnknownCounterparty, seedEvents } from "../demoFixtures.js";
 import type { AgentActionRequest } from "../domain/types.js";
 function seededKernel(): PermissionKernel {
   const kernel = new PermissionKernel(demoProfile);
@@ -21,7 +21,7 @@ test("an aligned delegated transfer is lower risk than a recipient swap from unt
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -29,7 +29,7 @@ test("an aligned delegated transfer is lower risk than a recipient swap from unt
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedAmount: { value: 20, currency: "USDC" }
     }
   };
@@ -37,12 +37,12 @@ test("an aligned delegated transfer is lower risk than a recipient swap from unt
     ...known,
     requestId: "novel",
     intent: "Send 20 USDC to Juan using the wallet address from the latest email.",
-    counterparty: "0x4a8b...evil",
+    counterparty: demoUnknownCounterparty,
     context: {
       source: "email",
       sourceTrust: "untrusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedAmount: { value: 20, currency: "USDC" }
     }
   };
@@ -67,7 +67,7 @@ test("a large amount spike is denied even when the recipient is familiar", () =>
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 350 USDC to Juan because the dinner total changed in a follow-up chat.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     amount: { value: 350, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "irreversible",
@@ -75,7 +75,7 @@ test("a large amount spike is denied even when the recipient is familiar", () =>
       source: "chat",
       sourceTrust: "mixed",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedAmount: { value: 20, currency: "USDC" }
     }
   };
@@ -96,7 +96,7 @@ test("step-up challenge is bound to the action hash", () => {
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan using the wallet address from the latest email.",
-    counterparty: "0x4a8b...evil",
+    counterparty: demoUnknownCounterparty,
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -104,7 +104,7 @@ test("step-up challenge is bound to the action hash", () => {
       source: "email",
       sourceTrust: "untrusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedAmount: { value: 20, currency: "USDC" }
     }
   };
@@ -127,7 +127,7 @@ test("decision signals expose weights and contributions consistent with the comp
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -135,7 +135,7 @@ test("decision signals expose weights and contributions consistent with the comp
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedAmount: { value: 20, currency: "USDC" }
     }
   };
