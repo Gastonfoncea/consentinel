@@ -36,6 +36,10 @@ export class HashingVectorMemory {
       .slice(0, limit);
   }
 
+  findSimilarActions(request: AgentActionRequest, limit = 5): SimilarAction[] {
+    return this.searchSimilar(request, limit);
+  }
+
   size(): number {
     return this.records.length;
   }

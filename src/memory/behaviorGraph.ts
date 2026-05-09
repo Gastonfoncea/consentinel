@@ -25,6 +25,26 @@ interface EdgeStats {
   lastSeen: string;
 }
 
+export interface GraphRelationshipQuery {
+  fromKind: NodeKind;
+  fromLabel: string;
+  toKind: NodeKind;
+  toLabel: string;
+  relation: string;
+}
+
+export interface GraphRelationship {
+  from: string;
+  to: string;
+  relation: string;
+  frequency: number;
+  totalAmount: number;
+  averageAmount: number;
+  firstSeen: string;
+  lastSeen: string;
+  outcomes: Record<PermissionOutcome, number>;
+}
+
 export interface GraphEvidence {
   familiarityScore: number;
   newCounterparty: boolean;
@@ -154,6 +174,23 @@ export class BehaviorGraph {
     return {
       nodes: [...this.nodes.values()],
       edges: [...this.edges.values()]
+    };
+  }
+
+  queryRelationship(query: GraphRelationshipQuery): GraphRelationship | undefined {
+    const edge = this.getEdge(query.fromKind, query.fromLabel, query.toKind, query.toLabel, query.relation);
+    if (!edge) return undefined;
+
+    return {
+      from: edge.from,
+      to: edge.to,
+      relation: edge.relation,
+      frequency: edge.frequency,
+      totalAmount: edge.totalAmount,
+      averageAmount: edge.frequency > 0 ? edge.totalAmount / edge.frequency : 0,
+      firstSeen: edge.firstSeen,
+      lastSeen: edge.lastSeen,
+      outcomes: { ...edge.outcomes }
     };
   }
 

@@ -11,12 +11,15 @@ console.log("Platanus Agent Permission Kernel demo\n");
 console.log(`Profile: ${demoProfile.userId} mode=${demoProfile.conservatism} trustedDevice=${demoProfile.trustedDevice}\n`);
 
 for (const request of demoRequests) {
-  const decision = kernel.assess(request);
+  const evaluation = await kernel.decide(request);
+  const { decision } = evaluation;
   console.log(`--- ${request.requestId}`);
   console.log(`${request.action.toUpperCase()} ${request.service}/${request.resource}`);
   console.log(`Outcome: ${decision.outcome} risk=${decision.riskScore.toFixed(2)}`);
   console.log(`Why: ${decision.explanation}`);
   console.log(`Top vector precedent: ${decision.similarActions[0]?.similarity.toFixed(2) ?? "none"}`);
+  console.log(`Drift: provider=${evaluation.intentDrift.provider} score=${evaluation.intentDrift.score.toFixed(2)}`);
+  console.log(`Events: ${evaluation.events.map((entry) => entry.type).join(" -> ")}`);
 
   const x402 = buildX402Permission(request);
   if (x402) {

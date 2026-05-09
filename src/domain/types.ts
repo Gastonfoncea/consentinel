@@ -33,6 +33,21 @@ export interface X402Context {
   facilitator?: string;
 }
 
+export interface NormalizedX402Context {
+  protocol: "x402";
+  endpoint: string;
+  maxAmount: MoneyAmount;
+  requestedAmount?: MoneyAmount;
+  counterparty?: string;
+  asset: string;
+  network: string;
+  scheme: string;
+  facilitator?: string;
+  withinConfiguredSpend: boolean;
+  requestedToMaximumRatio: number;
+  policyTags: string[];
+}
+
 export interface PermissionContext {
   source: ContextSource;
   sourceTrust: SourceTrust;
@@ -89,6 +104,25 @@ export interface SimilarAction {
   narrative: string;
 }
 
+export interface IntentDriftInput {
+  originalUserRequest?: string;
+  proposedActionNarrative: string;
+  source: ContextSource;
+  sourceTrust: SourceTrust;
+  expectedCounterparty?: string;
+  actualCounterparty?: string;
+  expectedAmount?: MoneyAmount;
+  actualAmount?: MoneyAmount;
+}
+
+export interface IntentDriftResult {
+  driftDetected: boolean;
+  confidence: number;
+  score: number;
+  reasoning: string;
+  provider: "anthropic" | "heuristic";
+}
+
 export interface ProjectedEffect {
   label: string;
   severity: number;
@@ -117,4 +151,21 @@ export interface StepUpChallenge {
   expiresAt: string;
   prompt: string;
   deliveryTarget?: string;
+}
+
+export type ConsentinelEventType =
+  | "request.received"
+  | "graph.evaluated"
+  | "memory.similarity_retrieved"
+  | "intent_drift.evaluated"
+  | "x402.normalized"
+  | "risk.scored"
+  | "decision.made"
+  | "step_up.required";
+
+export interface ConsentinelEvent {
+  type: ConsentinelEventType;
+  at: string;
+  summary: string;
+  payload?: Record<string, unknown>;
 }

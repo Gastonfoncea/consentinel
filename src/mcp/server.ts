@@ -4,7 +4,12 @@ import { z } from "zod";
 import { PermissionKernel } from "../kernel.js";
 import { demoProfile, seedEvents } from "../demoFixtures.js";
 import type { AgentActionRequest, TrackRecordEvent } from "../domain/types.js";
-import { buildX402Permission } from "../payments/x402.js";
+import {
+  assessAgentAction,
+  createStepUpChallengeResponse,
+  explainPermissionMemory,
+  recordTrackEvent
+} from "./handlers.js";
 
 const moneySchema = z.object({
   value: z.number().nonnegative(),
@@ -72,8 +77,7 @@ server.registerTool(
     }
   },
   async ({ event }: { event: TrackRecordEvent }) => {
-    kernel.record(event);
-    return jsonResponse({ ok: true, eventId: event.eventId });
+    return jsonResponse(recordTrackEvent(kernel, event));
   }
 );
 
@@ -87,11 +91,7 @@ server.registerTool(
     }
   },
   async ({ request }: { request: AgentActionRequest }) => {
-    const decision = kernel.assess(request);
-    return jsonResponse({
-      decision,
-      x402: buildX402Permission(request)
-    });
+    return jsonResponse(await assessAgentAction(kernel, request));
   }
 );
 
@@ -105,7 +105,7 @@ server.registerTool(
     }
   },
   async ({ request }: { request: AgentActionRequest }) => {
-    return jsonResponse(kernel.explainMemory(request));
+    return jsonResponse(explainPermissionMemory(kernel, request));
   }
 );
 
@@ -119,20 +119,7 @@ server.registerTool(
     }
   },
   async ({ request }: { request: AgentActionRequest }) => {
-    const decision = kernel.assess(request);
-    if (decision.outcome !== "step_up") {
-      return jsonResponse({
-        ok: false,
-        reason: `Decision was ${decision.outcome}; no step-up challenge is required.`,
-        decision
-      });
-    }
-
-    return jsonResponse({
-      ok: true,
-      decision,
-      challenge: kernel.createStepUpChallenge(request, decision)
-    });
+    return jsonResponse(await createStepUpChallengeResponse(kernel, request));
   }
 );
 
