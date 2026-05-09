@@ -4,7 +4,12 @@ import { z } from "zod";
 import type { Address } from "viem";
 import { PermissionKernel } from "../kernel.js";
 import { demoProfile, seedEvents } from "../demoFixtures.js";
-import type { AgentActionRequest, CounterpartyRouteTrust, TrackRecordEvent } from "../domain/types.js";
+import type {
+  AgentActionRequest,
+  CounterpartyRouteTrust,
+  PermissionContext,
+  TrackRecordEvent
+} from "../domain/types.js";
 import {
   assessAgentAction,
   createStepUpChallengeResponse,
@@ -126,8 +131,8 @@ server.registerTool(
     requestId?: string;
     agentId?: string;
     intent?: string;
-    source?: AgentActionRequest["context"]["source"];
-    sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+    source?: PermissionContext["source"];
+    sourceTrust?: PermissionContext["sourceTrust"];
     originalUserRequest?: string;
   }) => {
     const request = buildWalletReadRequest({
@@ -217,8 +222,8 @@ server.registerTool(
     intent?: string;
     counterpartyIdentity?: string;
     counterpartyRouteTrust?: CounterpartyRouteTrust;
-    source?: AgentActionRequest["context"]["source"];
-    sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+    source?: PermissionContext["source"];
+    sourceTrust?: PermissionContext["sourceTrust"];
     originalUserRequest?: string;
     expectedCounterparty?: string;
     expectedCounterpartyIdentity?: string;
@@ -263,8 +268,8 @@ function buildWalletReadRequest(input: {
   requestId?: string;
   agentId?: string;
   intent?: string;
-  source?: AgentActionRequest["context"]["source"];
-  sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+  source?: PermissionContext["source"];
+  sourceTrust?: PermissionContext["sourceTrust"];
   originalUserRequest?: string;
 }): AgentActionRequest {
   return {
@@ -293,8 +298,8 @@ function buildWalletTransferRequest(input: {
   intent?: string;
   counterpartyIdentity?: string;
   counterpartyRouteTrust?: CounterpartyRouteTrust;
-  source?: AgentActionRequest["context"]["source"];
-  sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+  source?: PermissionContext["source"];
+  sourceTrust?: PermissionContext["sourceTrust"];
   originalUserRequest?: string;
   expectedCounterparty?: string;
   expectedCounterpartyIdentity?: string;
