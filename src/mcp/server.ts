@@ -14,6 +14,7 @@ import {
   assessAgentAction,
   createStepUpChallengeResponse,
   explainPermissionMemory,
+  prepareWalletTransfer,
   mockExecuteWalletTransfer,
   recordTrackEvent
 } from "./handlers.js";
@@ -100,11 +101,21 @@ server.registerTool(
   }
 );
 
-// ────────────────────────────────────────────────────────────────────────────
-// Wallet tools (CON-10): direct execution, NO kernel gating yet.
-// CON-12 wraps these with kernel.assess so unsafe transfers get blocked /
-// step-upped instead of executed straight.
-// ────────────────────────────────────────────────────────────────────────────
+const walletTransferInputSchema = {
+  to: ethAddressSchema,
+  amount: usdcAmountSchema,
+  requestId: z.string().optional(),
+  agentId: z.string().optional(),
+  intent: z.string().optional(),
+  counterpartyIdentity: z.string().optional(),
+  counterpartyRouteTrust: counterpartyRouteTrustSchema.optional(),
+  source: sourceSchema.optional(),
+  sourceTrust: sourceTrustSchema.optional(),
+  originalUserRequest: z.string().optional(),
+  expectedCounterparty: z.string().optional(),
+  expectedCounterpartyIdentity: z.string().optional(),
+  expectedCounterpartyRouteTrust: counterpartyRouteTrustSchema.optional()
+};
 
 server.registerTool(
   "wallet_balance",
@@ -164,41 +175,97 @@ server.registerTool(
     }
 
     const w = await loadWallet();
+    const availability = w.describeWalletAvailability();
+    if (!availability.available) {
+      return jsonResponse({
+        ok: false,
+        status: "wallet_unavailable",
+        reason: availability.reason,
+        decision: evaluation.decision,
+        events: evaluation.events,
+        missing: availability.missing
+      });
+    }
+
+    const walletAddress = w.getWalletAddress();
     const balance = await w.getUsdcBalance();
     return jsonResponse({
       ok: true,
       status: "allowed",
       decision: evaluation.decision,
       events: evaluation.events,
-      address: w.walletAddress,
+      address: walletAddress,
       balance,
       asset: "USDC",
-      explorer: w.basescanAddrUrl(w.walletAddress)
+      explorer: w.basescanAddrUrl(walletAddress)
     });
+  }
+);
+
+server.registerTool(
+  "wallet_prepare_transfer",
+  {
+    title: "Wallet Transfer Preparation (USDC, Kernel Gated)",
+    description:
+      "Assess a wallet transfer through the kernel, then prepare the real ERC-20 transfer payload only when policy allows.",
+    inputSchema: walletTransferInputSchema
+  },
+  async ({
+    to,
+    amount,
+    requestId,
+    agentId,
+    intent,
+    counterpartyIdentity,
+    counterpartyRouteTrust,
+    source,
+    sourceTrust,
+    originalUserRequest,
+    expectedCounterparty,
+    expectedCounterpartyIdentity,
+    expectedCounterpartyRouteTrust
+  }: {
+    to: string;
+    amount: string;
+    requestId?: string;
+    agentId?: string;
+    intent?: string;
+    counterpartyIdentity?: string;
+    counterpartyRouteTrust?: CounterpartyRouteTrust;
+    source?: PermissionContext["source"];
+    sourceTrust?: PermissionContext["sourceTrust"];
+    originalUserRequest?: string;
+    expectedCounterparty?: string;
+    expectedCounterpartyIdentity?: string;
+    expectedCounterpartyRouteTrust?: CounterpartyRouteTrust;
+  }) => {
+    const request = buildWalletTransferRequest({
+      to: to as Address,
+      amount,
+      requestId,
+      agentId,
+      intent,
+      counterpartyIdentity,
+      counterpartyRouteTrust,
+      source,
+      sourceTrust,
+      originalUserRequest,
+      expectedCounterparty,
+      expectedCounterpartyIdentity,
+      expectedCounterpartyRouteTrust
+    });
+
+    return jsonResponse(await prepareWalletTransfer(kernel, request));
   }
 );
 
 server.registerTool(
   "wallet_transfer",
   {
-    title: "Wallet Transfer (USDC, Mocked + Kernel Gated)",
+    title: "Wallet Transfer (USDC, Prepared + Mock Executed)",
     description:
-      "Assess a wallet transfer through the kernel, then mock-execute it only when policy allows. Claimed or unknown new wallets can trigger step-up instead of execution.",
-    inputSchema: {
-      to: ethAddressSchema,
-      amount: usdcAmountSchema,
-      requestId: z.string().optional(),
-      agentId: z.string().optional(),
-      intent: z.string().optional(),
-      counterpartyIdentity: z.string().optional(),
-      counterpartyRouteTrust: counterpartyRouteTrustSchema.optional(),
-      source: sourceSchema.optional(),
-      sourceTrust: sourceTrustSchema.optional(),
-      originalUserRequest: z.string().optional(),
-      expectedCounterparty: z.string().optional(),
-      expectedCounterpartyIdentity: z.string().optional(),
-      expectedCounterpartyRouteTrust: counterpartyRouteTrustSchema.optional()
-    }
+      "Assess a wallet transfer through the kernel, prepare the real ERC-20 transfer payload, and mock only the final execution step.",
+    inputSchema: walletTransferInputSchema
   },
   async ({
     to,

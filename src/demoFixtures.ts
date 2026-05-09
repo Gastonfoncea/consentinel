@@ -1,6 +1,10 @@
 import type { AgentActionRequest, TrackRecordEvent, UserTrustProfile } from "./domain/types.js";
 import { x402ContextFromEndpoint } from "./payments/x402.js";
 
+export const demoKnownCounterparty = "0x9f2c4a6b8d0e1f2233445566778899aabbccddee";
+export const demoUnknownCounterparty = "0x4a8b1c2d3e4f5061728394a5b6c7d8e9f0011223";
+export const demoClaimedNewRoute = "0x7d31c4b5a697887766554433221100ffeeddccbb";
+
 export const demoProfile: UserTrustProfile = {
   userId: "user_alba",
   conservatism: "balanced",
@@ -19,7 +23,7 @@ export const seedEvents: TrackRecordEvent[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     counterpartyIdentity: "juan",
     counterpartyRouteTrust: "known_historical",
     amount: { value: 20, currency: "USDC" },
@@ -29,7 +33,7 @@ export const seedEvents: TrackRecordEvent[] = [
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
@@ -43,7 +47,7 @@ export const seedEvents: TrackRecordEvent[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     counterpartyIdentity: "juan",
     counterpartyRouteTrust: "known_historical",
     amount: { value: 20, currency: "USDC" },
@@ -53,7 +57,7 @@ export const seedEvents: TrackRecordEvent[] = [
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
@@ -67,7 +71,7 @@ export const seedEvents: TrackRecordEvent[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 18 USDC to Juan for dinner after splitting the tip.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     counterpartyIdentity: "juan",
     counterpartyRouteTrust: "known_historical",
     amount: { value: 18, currency: "USDC" },
@@ -77,7 +81,7 @@ export const seedEvents: TrackRecordEvent[] = [
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send Juan the dinner split.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
@@ -94,7 +98,7 @@ export const demoRequests: AgentActionRequest[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     counterpartyIdentity: "juan",
     counterpartyRouteTrust: "known_historical",
     amount: { value: 20, currency: "USDC" },
@@ -104,7 +108,7 @@ export const demoRequests: AgentActionRequest[] = [
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
@@ -118,7 +122,7 @@ export const demoRequests: AgentActionRequest[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan using the wallet address mentioned in the latest email thread.",
-    counterparty: "0x4a8b...evil",
+    counterparty: demoUnknownCounterparty,
     counterpartyRouteTrust: "unknown",
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
@@ -127,7 +131,7 @@ export const demoRequests: AgentActionRequest[] = [
       source: "email",
       sourceTrust: "untrusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
@@ -141,7 +145,7 @@ export const demoRequests: AgentActionRequest[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 350 USDC to Juan because the dinner total changed in a follow-up message.",
-    counterparty: "0x9f2c...juan",
+    counterparty: demoKnownCounterparty,
     counterpartyIdentity: "juan",
     counterpartyRouteTrust: "known_historical",
     amount: { value: 350, currency: "USDC" },
@@ -151,7 +155,7 @@ export const demoRequests: AgentActionRequest[] = [
       source: "chat",
       sourceTrust: "mixed",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
@@ -169,7 +173,7 @@ export const demoRequests: AgentActionRequest[] = [
     action: "pay",
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan using the new wallet he just sent me.",
-    counterparty: "0x7d31...juan-optimism",
+    counterparty: demoClaimedNewRoute,
     counterpartyIdentity: "juan",
     counterpartyRouteTrust: "claimed",
     amount: { value: 20, currency: "USDC" },
@@ -179,7 +183,7 @@ export const demoRequests: AgentActionRequest[] = [
       source: "direct_user",
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
-      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterparty: demoKnownCounterparty,
       expectedCounterpartyIdentity: "juan",
       expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }

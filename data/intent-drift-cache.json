@@ -1,21 +1,21 @@
 {
   "version": 1,
   "entries": {
-    "e418ecf7f66bc405035b40f7c4e28b931797a46e697edfac4b4664b37df90092": {
+    "62a422116f649d93924e2f415ce672674de23222073978d4fe941fe423199bbe": {
       "driftDetected": false,
       "confidence": 0.91,
       "score": 0.0944,
       "reasoning": "The proposed transfer matches the original user intent, recipient, and amount.",
       "provider": "anthropic"
     },
-    "7db2d2a79d1deec21c037ed317c1ad90546232f3e770a9e65e555dd43ec2525a": {
+    "1878d70cf3df8a91e12c138eef825887e5b0c3e0851a44ce61bf3ae5d7ddd7f8": {
       "driftDetected": true,
       "confidence": 0.96,
       "score": 0.9232,
       "reasoning": "The requested wallet recipient diverges from the user's stated intent and was introduced through an untrusted email context.",
       "provider": "anthropic"
     },
-    "82773b9b148c845585fb8cc9e0a55a9324fff3b95399af7e38899b8e5e8cbf3c": {
+    "919ecfe7bec8d1a7a71d834845a489cc4dbfecc1ea7e73013e9975febd8cef27": {
       "driftDetected": true,
       "confidence": 0.82,
       "score": 0.8644,
