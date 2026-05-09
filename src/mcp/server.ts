@@ -1,10 +1,24 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import type { Address } from "viem";
 import { PermissionKernel } from "../kernel.js";
 import { demoProfile, seedEvents } from "../demoFixtures.js";
 import type { AgentActionRequest, TrackRecordEvent } from "../domain/types.js";
 import { buildX402Permission } from "../payments/x402.js";
+
+// Wallet module is loaded lazily so the server still boots when .env is empty
+// (Alejandro/Gastón can run the kernel without the wallet stack ready).
+async function loadWallet() {
+  return await import("../wallet/wallet.js");
+}
+
+const ethAddressSchema = z
+  .string()
+  .regex(/^0x[a-fA-F0-9]{40}$/, "Invalid Ethereum address");
+const usdcAmountSchema = z
+  .string()
+  .regex(/^\d+(\.\d{1,6})?$/, "Amount must be a decimal string with up to 6 decimals");
 
 const moneySchema = z.object({
   value: z.number().nonnegative(),
@@ -132,6 +146,57 @@ server.registerTool(
       ok: true,
       decision,
       challenge: kernel.createStepUpChallenge(request, decision)
+    });
+  }
+);
+
+// ────────────────────────────────────────────────────────────────────────────
+// Wallet tools (CON-10): direct execution, NO kernel gating yet.
+// CON-12 wraps these with kernel.assess so unsafe transfers get blocked /
+// step-upped instead of executed straight.
+// ────────────────────────────────────────────────────────────────────────────
+
+server.registerTool(
+  "wallet_balance",
+  {
+    title: "Wallet Balance (USDC, Base Sepolia)",
+    description: "Returns the current USDC balance of the demo wallet on Base Sepolia.",
+    inputSchema: {}
+  },
+  async () => {
+    const w = await loadWallet();
+    const balance = await w.getUsdcBalance();
+    return jsonResponse({
+      address: w.walletAddress,
+      balance,
+      asset: "USDC",
+      explorer: w.basescanAddrUrl(w.walletAddress)
+    });
+  }
+);
+
+server.registerTool(
+  "wallet_transfer",
+  {
+    title: "Wallet Transfer (USDC, Base Sepolia)",
+    description:
+      "Execute a USDC transfer on Base Sepolia. Direct execution (no kernel gating) for plumbing validation in CON-10. Will be wrapped by kernel.assess in CON-12.",
+    inputSchema: {
+      to: ethAddressSchema,
+      amount: usdcAmountSchema
+    }
+  },
+  async ({ to, amount }: { to: string; amount: string }) => {
+    const w = await loadWallet();
+    const hash = await w.transferUsdc(to as Address, amount);
+    return jsonResponse({
+      ok: true,
+      hash,
+      explorer: w.basescanTxUrl(hash),
+      from: w.walletAddress,
+      to,
+      amount,
+      asset: "USDC"
     });
   }
 );
