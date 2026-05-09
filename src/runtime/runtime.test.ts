@@ -109,6 +109,43 @@ test("verified step-up resumes wallet mock execution and promotes the route for 
   rmSync(tempDir, { recursive: true, force: true });
 });
 
+test("canceled step-up is final and cannot be verified afterwards", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "runtime-cancel-stepup-"));
+  const pendingRepo = new FilePendingStepUpRepository(join(tempDir, "pending-stepups.json"));
+  const runtime = makeRuntime(tempDir);
+  const events: string[] = [];
+  const unsubscribe = runtime.subscribe((event) => {
+    events.push(event.type);
+  });
+
+  const stepUp = await runtime.mockExecuteWalletTransfer(demoRequests[3]!);
+  assert.equal(stepUp.ok, false);
+  assert.equal(stepUp.status, "step_up_required");
+  assert.ok(stepUp.challengeId);
+
+  const result = await runtime.cancelPendingStepUp(stepUp.challengeId!, "alba");
+  assert.equal(result.canceled, true);
+  assert.equal(result.challengeId, stepUp.challengeId);
+
+  const persisted = await pendingRepo.get(stepUp.challengeId!);
+  assert.equal(persisted?.status, "canceled");
+  assert.equal(persisted?.canceledByUsername, "alba");
+
+  assert.ok(events.includes("step_up.canceled"));
+
+  await assert.rejects(
+    () => runtime.completeVerifiedStepUp(stepUp.challengeId!, "alba"),
+    /not pending/
+  );
+  await assert.rejects(
+    () => runtime.cancelPendingStepUp(stepUp.challengeId!, "alba"),
+    /not pending/
+  );
+
+  unsubscribe();
+  rmSync(tempDir, { recursive: true, force: true });
+});
+
 test("runtime stream emits challenge, verification, preparation, and mock execution events", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "runtime-stream-"));
   const runtime = makeRuntime(tempDir);

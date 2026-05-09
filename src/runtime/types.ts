@@ -25,7 +25,7 @@ export type PendingOperation =
       request: AgentActionRequest;
     };
 
-export type PendingStepUpStatus = "pending" | "verified" | "completed" | "expired";
+export type PendingStepUpStatus = "pending" | "verified" | "completed" | "expired" | "canceled";
 
 export interface PendingStepUp extends StepUpChallenge {
   createdAt: string;
@@ -38,6 +38,8 @@ export interface PendingStepUp extends StepUpChallenge {
   verifiedAt?: string;
   verifiedByUsername?: string;
   completedAt?: string;
+  canceledAt?: string;
+  canceledByUsername?: string;
 }
 
 export type DurableRuntimeEvent =
@@ -90,6 +92,15 @@ export type DurableRuntimeEvent =
       actionHash: string;
       verifiedByUsername?: string;
       trackEvent: TrackRecordEvent;
+    }
+  | {
+      id: string;
+      kind: "step_up_canceled";
+      recordedAt: string;
+      challengeId: string;
+      requestId: string;
+      actionHash: string;
+      canceledByUsername?: string;
     };
 
 export type RuntimePermissionEvent =
@@ -134,6 +145,14 @@ export type RuntimePermissionEvent =
       challengeId: string;
       channel: StepUpChallenge["channel"];
       verifiedByUsername?: string;
+    }
+  | {
+      type: "step_up.canceled";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: StepUpChallenge["channel"];
+      canceledByUsername?: string;
     }
   | {
       type: "wallet.transfer_prepared";
