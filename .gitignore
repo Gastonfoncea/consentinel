@@ -17,6 +17,7 @@ contracts/broadcast/
 out/
 next-env.d.ts.bak
 *.tsbuildinfo
+.playwright-mcp/
 
 # IDE
 .vscode/
