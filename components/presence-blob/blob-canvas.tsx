@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { FRAGMENT_SHADER, VERTEX_SHADER } from "./shaders";
 import { STATE_PARAMS, type BlobState } from "./states";
@@ -24,7 +24,26 @@ const DECISION_FLASH = 0.5;
 // `camera` prop is only read at mount, so we apply this reactively below
 // via CameraRig — that's what lets HMR pick up changes without a full
 // page reload while iterating.
-const CAMERA_Z = 7;
+//
+// Mobile gets a closer camera so the blob fills more of its (much
+// smaller) container. At Z=5 vs Z=7, the blob reads ~40% larger in
+// frame, which keeps it as the hero on phone-sized viewports.
+const CAMERA_Z_DESKTOP = 7;
+const CAMERA_Z_MOBILE = 5;
+const MOBILE_BREAKPOINT = "(max-width: 1023px)";
+
+function useCameraZ(): number {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(MOBILE_BREAKPOINT);
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile ? CAMERA_Z_MOBILE : CAMERA_Z_DESKTOP;
+}
 
 function CameraRig({ z }: { z: number }) {
   const { camera } = useThree();
@@ -179,14 +198,15 @@ function Blob({ state, pulseSeed }: BlobProps) {
 }
 
 export default function BlobCanvas({ state, pulseSeed }: BlobProps) {
+  const cameraZ = useCameraZ();
   return (
     <Canvas
-      camera={{ position: [0, 0, CAMERA_Z], fov: 45 }}
+      camera={{ position: [0, 0, cameraZ], fov: 45 }}
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
       style={{ background: "transparent" }}
     >
-      <CameraRig z={CAMERA_Z} />
+      <CameraRig z={cameraZ} />
       <ambientLight intensity={0.4} />
       <Blob state={state} pulseSeed={pulseSeed} />
     </Canvas>

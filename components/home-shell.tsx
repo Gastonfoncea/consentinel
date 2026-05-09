@@ -82,11 +82,11 @@ export function HomeShell({ username }: HomeShellProps) {
         onRequest={requestNotifPermission}
       />
 
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-3">
           <span
             className={cn(
-              "h-2 w-2 rounded-full transition-colors",
+              "h-2 w-2 shrink-0 rounded-full transition-colors",
               blobState === "deny"
                 ? "bg-deny shadow-glow-deny"
                 : blobState === "verifying"
@@ -97,7 +97,7 @@ export function HomeShell({ username }: HomeShellProps) {
           <span className="font-mono text-sm tracking-wide text-text">
             consentinel
           </span>
-          <span className="text-xs text-muted">
+          <span className="hidden text-xs text-muted sm:inline">
             <span className="text-text">{username}</span>
             <span className="mx-2 text-muted/50">⇄</span>
             <span className="text-muted">myagent</span>
