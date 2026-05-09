@@ -10,9 +10,19 @@ export type ActivityStatus =
   // statusLabel/actionPrompt at translate time.
   | "needs_biometric";
 
+export type TechLineKind =
+  | "request"
+  | "trace"
+  | "decision"
+  | "step_up_created"
+  | "step_up_verified"
+  | "wallet_prepared"
+  | "wallet_executed"
+  | "error";
+
 export interface TechnicalLine {
   ts: number;
-  kind: "request" | "thinking" | "evidence" | "decision" | "step_up";
+  kind: TechLineKind;
   text: string;
 }
 
@@ -32,28 +42,32 @@ export interface TranslatedRequest {
   technicalLines: TechnicalLine[];
 }
 
-type RequestEvent = Extract<KernelStreamEvent, { type: "request" }>;
-type DecisionEvent = Extract<KernelStreamEvent, { type: "decision" }>;
+type RequestStartedEvent = Extract<KernelStreamEvent, { type: "permission.request_started" }>;
+type TraceEvent = Extract<KernelStreamEvent, { type: "permission.trace_event" }>;
+type DecisionEvent = Extract<KernelStreamEvent, { type: "permission.decision_made" }>;
+type StepUpVerifiedEvent = Extract<KernelStreamEvent, { type: "step_up.verified" }>;
+type WalletExecutedEvent = Extract<KernelStreamEvent, { type: "wallet.transfer_mock_executed" }>;
+type RuntimeErrorEvent = Extract<KernelStreamEvent, { type: "runtime.error" }>;
 
 interface ScenarioCopy {
-  headline: (req: RequestEvent) => string;
-  subline?: (req: RequestEvent) => string | undefined;
-  // One reasoning line per evidence event, in order. Lines appear
-  // progressively as evidence arrives, which gives the "kernel thinking
-  // out loud" feel without coupling the panel to event timing.
+  headline: (req: RequestStartedEvent) => string;
+  subline?: (req: RequestStartedEvent) => string | undefined;
+  // One reasoning line per trace event, in order. If the kernel emits
+  // more trace events than copy lines, the rest fall through to using
+  // the trace event's `summary` field directly.
   evidenceCopy: string[];
 }
 
-// Hand-crafted copy for the demo scenarios — guarantees the demo reads
-// perfectly. Anything outside this map falls back to the generic translator.
-// All copy speaks AS the kernel ("yo, Consentinel") ABOUT the agent
-// ("tu asistente"), in casual rioplatense first-person.
+// Hand-crafted copy for the known demo requestIds (matches src/demoFixtures.ts).
+// Anything outside this map falls back to the generic translator below.
+// Voice: kernel ("yo, Consentinel") talking ABOUT the agent ("tu asistente"),
+// rioplatense casual first-person.
 const SCENARIO_COPY: Record<string, ScenarioCopy> = {
   req_demo_aligned_transfer: {
     headline: () => "Tu asistente quiere mandarle 20 USDC a Juan",
     subline: () => '"for dinner"',
     evidenceCopy: [
-      "Lo conozco — le mandaste 3 veces esta semana.",
+      "Lo conozco — le mandaste varias veces esta semana.",
       "Y me lo pediste vos directo, no vino de un mail.",
     ],
   },
@@ -73,6 +87,14 @@ const SCENARIO_COPY: Record<string, ScenarioCopy> = {
       "Y tu política dice que no apruebo solo arriba de 75 USD.",
     ],
   },
+  req_demo_claimed_new_wallet: {
+    headline: () => "Tu asistente quiere mandarle 20 USDC a Juan, a una wallet nueva",
+    subline: () => "(dice que es de él)",
+    evidenceCopy: [
+      "El destinatario dice ser Juan pero la wallet es nueva — nunca le mandaste plata ahí.",
+      "El monto coincide con lo habitual, así que no es spike. La pista vino de él directo.",
+    ],
+  },
 };
 
 export function groupByRequest(
@@ -81,9 +103,12 @@ export function groupByRequest(
   const groups = new Map<string, KernelStreamEvent[]>();
   for (const event of events) {
     if (event.type === "ping") continue;
-    const list = groups.get(event.requestId) ?? [];
+    // runtime.error events without a requestId can't be attached to a card.
+    const requestId = "requestId" in event ? event.requestId : undefined;
+    if (!requestId) continue;
+    const list = groups.get(requestId) ?? [];
     list.push(event);
-    groups.set(event.requestId, list);
+    groups.set(requestId, list);
   }
   return groups;
 }
@@ -91,31 +116,54 @@ export function groupByRequest(
 export function translateRequest(
   events: KernelStreamEvent[]
 ): TranslatedRequest | null {
-  const requestEvent = events.find((e) => e.type === "request") as
-    | RequestEvent
-    | undefined;
+  const requestEvent = events.find(
+    (e): e is RequestStartedEvent => e.type === "permission.request_started"
+  );
   if (!requestEvent) return null;
 
-  const decisionEvent = events.find((e) => e.type === "decision") as
-    | DecisionEvent
-    | undefined;
+  const decisionEvent = events.find(
+    (e): e is DecisionEvent => e.type === "permission.decision_made"
+  );
+  const walletExecuted = events.find(
+    (e): e is WalletExecutedEvent => e.type === "wallet.transfer_mock_executed"
+  );
+  const stepUpVerified = events.find(
+    (e): e is StepUpVerifiedEvent => e.type === "step_up.verified"
+  );
+  const runtimeError = events.find(
+    (e): e is RuntimeErrorEvent => e.type === "runtime.error"
+  );
 
   const copy = SCENARIO_COPY[requestEvent.requestId];
 
   const headline = copy?.headline(requestEvent) ?? genericHeadline(requestEvent);
-  const subline = copy?.subline?.(requestEvent) ?? genericSubline(requestEvent);
+  const subline = copy?.subline?.(requestEvent);
 
-  // One reasoning line per evidence event seen so far.
-  const evidenceCount = events.filter((e) => e.type === "evidence").length;
-  const reasoning: string[] = copy
-    ? copy.evidenceCopy.slice(0, evidenceCount)
-    : genericReasoning(events);
+  // Build reasoning from trace events. Use scenario copy for the first N,
+  // fall back to the trace's `summary` field for the rest.
+  const traceEvents = events.filter(
+    (e): e is TraceEvent => e.type === "permission.trace_event"
+  );
+  const reasoning: string[] = [];
+  for (let i = 0; i < traceEvents.length; i++) {
+    const scenarioLine = copy?.evidenceCopy[i];
+    reasoning.push(scenarioLine ?? traceEvents[i].summary);
+  }
 
+  // Status — runtime errors win, then wallet executed, then decision.
+  // step_up.verified collapses needs_biometric back into thinking until
+  // the wallet event arrives.
   let status: ActivityStatus = "thinking";
   let statusLabel = "Pensando…";
   let actionPrompt: string | undefined;
 
-  if (decisionEvent) {
+  if (runtimeError) {
+    status = "blocked";
+    statusLabel = "Algo falló";
+  } else if (walletExecuted) {
+    status = "approved";
+    statusLabel = "Aprobado";
+  } else if (decisionEvent) {
     if (
       decisionEvent.outcome === "allow" ||
       decisionEvent.outcome === "allow_with_audit"
@@ -126,17 +174,23 @@ export function translateRequest(
       status = "blocked";
       statusLabel = "Bloqueado";
     } else if (decisionEvent.outcome === "step_up") {
-      status = "needs_biometric";
-      const method = detectBiometricMethod();
-      const bio = biometricCopy(method);
-      statusLabel = bio.status;
-      actionPrompt = bio.action;
+      if (stepUpVerified) {
+        // User already confirmed; we're back to thinking until wallet executes.
+        status = "thinking";
+        statusLabel = "Confirmaste — procesando…";
+      } else {
+        status = "needs_biometric";
+        const method = detectBiometricMethod();
+        const bio = biometricCopy(method);
+        statusLabel = bio.status;
+        actionPrompt = bio.action;
+      }
     }
   }
 
   const technicalLines = events
-    .filter((e): e is Exclude<KernelStreamEvent, { type: "ping" }> =>
-      e.type !== "ping"
+    .filter(
+      (e): e is Exclude<KernelStreamEvent, { type: "ping" }> => e.type !== "ping"
     )
     .map(translateToTechLine);
 
@@ -167,49 +221,67 @@ export function translateAll(events: KernelStreamEvent[]): TranslatedRequest[] {
 
 // ---------- generic fallbacks ----------
 
-function genericHeadline(req: RequestEvent): string {
+function genericHeadline(req: RequestStartedEvent): string {
   const intent = req.intent.replace(/\.$/, "");
   return `Tu asistente quiere ${intent.toLowerCase()}`;
-}
-
-function genericSubline(_req: RequestEvent): string | undefined {
-  return undefined;
-}
-
-function genericReasoning(events: KernelStreamEvent[]): string[] {
-  const lines: string[] = [];
-  for (const e of events) {
-    if (e.type === "evidence") lines.push(e.detail);
-    if (e.type === "decision") lines.push(e.explanation);
-  }
-  return lines;
 }
 
 function translateToTechLine(
   e: Exclude<KernelStreamEvent, { type: "ping" }>
 ): TechnicalLine {
   switch (e.type) {
-    case "request":
+    case "permission.request_started":
       return {
         ts: e.ts,
         kind: "request",
         text: `REQUEST ${e.agentId} ${e.action} ${e.service} — ${e.intent}`,
       };
-    case "thinking":
-      return { ts: e.ts, kind: "thinking", text: `· ${e.message}` };
-    case "evidence":
-      return { ts: e.ts, kind: "evidence", text: `${e.label}: ${e.detail}` };
-    case "decision":
+    case "permission.trace_event":
+      return {
+        ts: e.ts,
+        kind: "trace",
+        text: `${e.eventType}: ${e.summary}`,
+      };
+    case "permission.decision_made":
       return {
         ts: e.ts,
         kind: "decision",
         text: `${e.outcome.toUpperCase()} risk=${e.riskScore.toFixed(2)} ${e.explanation}`,
       };
-    case "step_up":
+    case "step_up.challenge_created":
       return {
         ts: e.ts,
-        kind: "step_up",
-        text: `STEP-UP ${e.channel} ${e.prompt}`,
+        kind: "step_up_created",
+        text: `STEP-UP requested via ${e.channel} (id=${e.challengeId.slice(0, 8)}…)`,
+      };
+    case "step_up.verified":
+      return {
+        ts: e.ts,
+        kind: "step_up_verified",
+        text: `STEP-UP verified via ${e.channel}${
+          e.verifiedByUsername ? ` by ${e.verifiedByUsername}` : ""
+        }`,
+      };
+    case "wallet.transfer_prepared":
+      return {
+        ts: e.ts,
+        kind: "wallet_prepared",
+        text: `WALLET prepared: ${e.amount} ${e.asset} → ${e.to.slice(0, 10)}…`,
+      };
+    case "wallet.transfer_mock_executed":
+      return {
+        ts: e.ts,
+        kind: "wallet_executed",
+        text: `WALLET executed: ${e.amount} ${e.asset} → ${e.to.slice(
+          0,
+          10
+        )}… (tx ${e.txHash.slice(0, 10)}…)`,
+      };
+    case "runtime.error":
+      return {
+        ts: e.ts,
+        kind: "error",
+        text: `ERROR: ${e.message}`,
       };
   }
 }
