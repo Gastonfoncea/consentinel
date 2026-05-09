@@ -21,3 +21,6 @@ next-env.d.ts.bak
 # IDE
 .vscode/
 .idea/
+
+# Runtime data (file-backed persistence)
+data/runtime/

@@ -1,4 +1,4 @@
-import { actionHash } from "../domain/narrative.js";
+import { actionHash } from "../domain/narrative";
 import type {
   AgentActionRequest,
   CounterpartyRouteTrust,
@@ -10,8 +10,8 @@ import type {
   ProjectedEffect,
   SimilarAction,
   UserTrustProfile
-} from "../domain/types.js";
-import type { GraphEvidence } from "../memory/behaviorGraph.js";
+} from "../domain/types";
+import type { GraphEvidence } from "../memory/behaviorGraph";
 
 export interface RiskEngineInput {
   request: AgentActionRequest;

@@ -1,5 +1,5 @@
-import type { AgentActionRequest, TrackRecordEvent, UserTrustProfile } from "./domain/types.js";
-import { x402ContextFromEndpoint } from "./payments/x402.js";
+import type { AgentActionRequest, TrackRecordEvent, UserTrustProfile } from "./domain/types";
+import { x402ContextFromEndpoint } from "./payments/x402";
 
 export const demoKnownCounterparty = "0x9f2c4a6b8d0e1f2233445566778899aabbccddee";
 export const demoUnknownCounterparty = "0x4a8b1c2d3e4f5061728394a5b6c7d8e9f0011223";
@@ -10,7 +10,7 @@ export const demoProfile: UserTrustProfile = {
   conservatism: "balanced",
   trustedDevice: true,
   maxAutonomousSpend: { value: 75, currency: "USD" },
-  preferredStepUp: "voice_biometric_callback",
+  preferredStepUp: "passkey",
   phoneE164: "+15550101111"
 };
 

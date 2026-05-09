@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { IntentDriftInput, IntentDriftResult } from "../domain/types.js";
+import type { IntentDriftInput, IntentDriftResult } from "../domain/types";
 
 interface IntentDriftCacheFile {
   version: 1;

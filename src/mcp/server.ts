@@ -2,14 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import type { Address } from "viem";
-import { PermissionKernel } from "../kernel.js";
-import { demoProfile, seedEvents } from "../demoFixtures.js";
 import type {
   AgentActionRequest,
   CounterpartyRouteTrust,
   PermissionContext,
   TrackRecordEvent
-} from "../domain/types.js";
+} from "../domain/types";
 import {
   assessAgentAction,
   createStepUpChallengeResponse,
@@ -17,14 +15,10 @@ import {
   prepareWalletTransfer,
   mockExecuteWalletTransfer,
   recordTrackEvent
-} from "./handlers.js";
-import { counterpartyRouteTrustSchema, eventSchema, requestSchema } from "./schemas.js";
-
-// Wallet module is loaded lazily so the server still boots when .env is empty
-// (Alejandro/Gastón can run the kernel without the wallet stack ready).
-async function loadWallet() {
-  return await import("../wallet/wallet.js");
-}
+} from "./handlers";
+import { counterpartyRouteTrustSchema, eventSchema, requestSchema } from "./schemas";
+import { getSharedKernelRuntime } from "../runtime/runtime";
+import { buildWalletReadRequest, buildWalletTransferRequest } from "../runtime/requests";
 
 const ethAddressSchema = z
   .string()
@@ -35,10 +29,7 @@ const usdcAmountSchema = z
 const sourceSchema = z.enum(["direct_user", "email", "chat", "tool_output", "system", "unknown"]);
 const sourceTrustSchema = z.enum(["trusted", "mixed", "untrusted"]);
 
-const kernel = new PermissionKernel(demoProfile);
-for (const event of seedEvents) {
-  kernel.record(event);
-}
+const runtime = getSharedKernelRuntime();
 
 const server = new McpServer({
   name: "platanus-agent-permission-kernel",
@@ -55,7 +46,7 @@ server.registerTool(
     }
   },
   async ({ event }: { event: TrackRecordEvent }) => {
-    return jsonResponse(recordTrackEvent(kernel, event));
+    return jsonResponse(await recordTrackEvent(runtime, event));
   }
 );
 
@@ -69,7 +60,7 @@ server.registerTool(
     }
   },
   async ({ request }: { request: AgentActionRequest }) => {
-    return jsonResponse(await assessAgentAction(kernel, request));
+    return jsonResponse(await assessAgentAction(runtime, request));
   }
 );
 
@@ -83,7 +74,7 @@ server.registerTool(
     }
   },
   async ({ request }: { request: AgentActionRequest }) => {
-    return jsonResponse(explainPermissionMemory(kernel, request));
+    return jsonResponse(await explainPermissionMemory(runtime, request));
   }
 );
 
@@ -97,7 +88,7 @@ server.registerTool(
     }
   },
   async ({ request }: { request: AgentActionRequest }) => {
-    return jsonResponse(await createStepUpChallengeResponse(kernel, request));
+    return jsonResponse(await createStepUpChallengeResponse(runtime, request));
   }
 );
 
@@ -154,51 +145,7 @@ server.registerTool(
       sourceTrust,
       originalUserRequest
     });
-    const evaluation = await kernel.decide(request);
-    if (evaluation.decision.outcome === "deny") {
-      return jsonResponse({
-        ok: false,
-        status: "blocked",
-        decision: evaluation.decision,
-        events: evaluation.events
-      });
-    }
-
-    if (evaluation.decision.outcome === "step_up") {
-      return jsonResponse({
-        ok: false,
-        status: "step_up_required",
-        decision: evaluation.decision,
-        events: evaluation.events,
-        challenge: kernel.createStepUpChallenge(request, evaluation.decision)
-      });
-    }
-
-    const w = await loadWallet();
-    const availability = w.describeWalletAvailability();
-    if (!availability.available) {
-      return jsonResponse({
-        ok: false,
-        status: "wallet_unavailable",
-        reason: availability.reason,
-        decision: evaluation.decision,
-        events: evaluation.events,
-        missing: availability.missing
-      });
-    }
-
-    const walletAddress = w.getWalletAddress();
-    const balance = await w.getUsdcBalance();
-    return jsonResponse({
-      ok: true,
-      status: "allowed",
-      decision: evaluation.decision,
-      events: evaluation.events,
-      address: walletAddress,
-      balance,
-      asset: "USDC",
-      explorer: w.basescanAddrUrl(walletAddress)
-    });
+    return jsonResponse(await runtime.getWalletBalance(request));
   }
 );
 
@@ -255,7 +202,7 @@ server.registerTool(
       expectedCounterpartyRouteTrust
     });
 
-    return jsonResponse(await prepareWalletTransfer(kernel, request));
+    return jsonResponse(await prepareWalletTransfer(runtime, request));
   }
 );
 
@@ -312,7 +259,7 @@ server.registerTool(
       expectedCounterpartyRouteTrust
     });
 
-    return jsonResponse(await mockExecuteWalletTransfer(kernel, request));
+    return jsonResponse(await mockExecuteWalletTransfer(runtime, request));
   }
 );
 
@@ -328,74 +275,5 @@ function jsonResponse<T extends Record<string, unknown>>(data: T) {
       }
     ],
     structuredContent: data
-  };
-}
-
-function buildWalletReadRequest(input: {
-  requestId?: string;
-  agentId?: string;
-  intent?: string;
-  source?: PermissionContext["source"];
-  sourceTrust?: PermissionContext["sourceTrust"];
-  originalUserRequest?: string;
-}): AgentActionRequest {
-  return {
-    requestId: input.requestId ?? "req_wallet_balance",
-    userId: demoProfile.userId,
-    agentId: input.agentId ?? "finance_agent",
-    service: "wallet",
-    action: "read",
-    resource: "usdc_balance",
-    intent: input.intent ?? "Read the current USDC balance of the demo wallet.",
-    dataSensitivity: "financial",
-    reversibility: "reversible",
-    context: {
-      source: input.source ?? "direct_user",
-      sourceTrust: input.sourceTrust ?? "trusted",
-      originalUserRequest: input.originalUserRequest
-    }
-  };
-}
-
-function buildWalletTransferRequest(input: {
-  to: Address;
-  amount: string;
-  requestId?: string;
-  agentId?: string;
-  intent?: string;
-  counterpartyIdentity?: string;
-  counterpartyRouteTrust?: CounterpartyRouteTrust;
-  source?: PermissionContext["source"];
-  sourceTrust?: PermissionContext["sourceTrust"];
-  originalUserRequest?: string;
-  expectedCounterparty?: string;
-  expectedCounterpartyIdentity?: string;
-  expectedCounterpartyRouteTrust?: CounterpartyRouteTrust;
-}): AgentActionRequest {
-  return {
-    requestId: input.requestId ?? `req_wallet_transfer_${Date.now()}`,
-    userId: demoProfile.userId,
-    agentId: input.agentId ?? "finance_agent",
-    service: "wallet",
-    action: "pay",
-    resource: "usdc_transfer",
-    intent: input.intent ?? `Send ${input.amount} USDC to ${input.to}.`,
-    counterparty: input.to,
-    counterpartyIdentity: input.counterpartyIdentity,
-    counterpartyRouteTrust: input.counterpartyRouteTrust ?? "unknown",
-    amount: {
-      value: Number(input.amount),
-      currency: "USDC"
-    },
-    dataSensitivity: "financial",
-    reversibility: "compensatable",
-    context: {
-      source: input.source ?? "direct_user",
-      sourceTrust: input.sourceTrust ?? "trusted",
-      originalUserRequest: input.originalUserRequest,
-      expectedCounterparty: input.expectedCounterparty,
-      expectedCounterpartyIdentity: input.expectedCounterpartyIdentity,
-      expectedCounterpartyRouteTrust: input.expectedCounterpartyRouteTrust
-    }
   };
 }

@@ -3,7 +3,7 @@ import type {
   MoneyAmount,
   NormalizedX402Context,
   X402Context
-} from "../domain/types.js";
+} from "../domain/types";
 
 export interface X402PaymentPermission {
   protocol: "x402";
