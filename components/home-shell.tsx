@@ -76,10 +76,10 @@ export function HomeShell({ username }: HomeShellProps) {
       </header>
 
       <section className="flex flex-1 flex-col lg:min-h-0 lg:flex-row">
-        {/* Left column: blob hero + supporting cards. lg:flex-[3] keeps the
-            current 3:2 ratio against the activity panel — proportion change
-            comes in a follow-up commit. */}
-        <div className="flex flex-col lg:min-h-0 lg:flex-[3]">
+        {/* Left column: blob hero + supporting cards. 9:11 ratio against the
+            activity panel = 45/55. Blob still reads as hero (the radial halo
+            extends its presence past the rectangle); feed gets room to breathe. */}
+        <div className="flex flex-col lg:min-h-0 lg:flex-[9]">
           <div
             className="relative min-h-[420px] flex-1 overflow-hidden lg:min-h-0"
             style={{
@@ -124,7 +124,7 @@ export function HomeShell({ username }: HomeShellProps) {
 
         {/* Right column: human-readable activity feed. min-h-0 lets the
             panel's internal overflow-y-auto actually clip + scroll on lg. */}
-        <div className="border-t border-border lg:min-h-0 lg:flex-[2] lg:border-l lg:border-t-0">
+        <div className="border-t border-border lg:min-h-0 lg:flex-[11] lg:border-l lg:border-t-0">
           <ActivityPanel />
         </div>
       </section>
