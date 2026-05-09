@@ -441,6 +441,51 @@ export class KernelRuntime {
     return resumed;
   }
 
+  async cancelPendingStepUp(
+    challengeId: string,
+    username: string,
+    now = this.clock()
+  ) {
+    await this.ensureInitialized();
+    const pending = await this.requirePendingStepUp(challengeId);
+    if (pending.status !== "pending") {
+      throw new Error(`Step-up ${challengeId} is ${pending.status}, not pending.`);
+    }
+
+    if (pending.challengeOwnerUsername && pending.challengeOwnerUsername !== username) {
+      throw new Error(`Step-up ${challengeId} is owned by another user.`);
+    }
+
+    await this.appendDurableEvent({
+      id: durableId("stepup_canceled", challengeId),
+      kind: "step_up_canceled",
+      recordedAt: now.toISOString(),
+      challengeId,
+      requestId: pending.request.requestId,
+      actionHash: pending.decision.actionHash,
+      canceledByUsername: username
+    });
+
+    this.emit({
+      type: "step_up.canceled",
+      ts: now.getTime(),
+      requestId: pending.request.requestId,
+      challengeId,
+      channel: pending.channel,
+      canceledByUsername: username
+    });
+
+    const canceled: PendingStepUp = {
+      ...pending,
+      status: "canceled",
+      canceledAt: now.toISOString(),
+      canceledByUsername: username
+    };
+    await this.pendingStepUps.upsert(canceled);
+
+    return { canceled: true as const, challengeId };
+  }
+
   async getWalletOverview() {
     await this.ensureInitialized();
     const availability = describeWalletAvailability();

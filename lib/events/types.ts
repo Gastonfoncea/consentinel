@@ -52,6 +52,14 @@ export type KernelStreamEvent =
       verifiedByUsername?: string;
     }
   | {
+      type: "step_up.canceled";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: "voice_biometric_callback" | "passkey";
+      canceledByUsername?: string;
+    }
+  | {
       type: "wallet.transfer_prepared";
       ts: number;
       requestId: string;

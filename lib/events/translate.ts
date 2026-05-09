@@ -16,6 +16,7 @@ export type TechLineKind =
   | "decision"
   | "step_up_created"
   | "step_up_verified"
+  | "step_up_canceled"
   | "wallet_prepared"
   | "wallet_executed"
   | "error";
@@ -50,6 +51,7 @@ type TraceEvent = Extract<KernelStreamEvent, { type: "permission.trace_event" }>
 type DecisionEvent = Extract<KernelStreamEvent, { type: "permission.decision_made" }>;
 type StepUpChallengeEvent = Extract<KernelStreamEvent, { type: "step_up.challenge_created" }>;
 type StepUpVerifiedEvent = Extract<KernelStreamEvent, { type: "step_up.verified" }>;
+type StepUpCanceledEvent = Extract<KernelStreamEvent, { type: "step_up.canceled" }>;
 type WalletExecutedEvent = Extract<KernelStreamEvent, { type: "wallet.transfer_mock_executed" }>;
 type RuntimeErrorEvent = Extract<KernelStreamEvent, { type: "runtime.error" }>;
 
@@ -134,6 +136,9 @@ export function translateRequest(
   const stepUpVerified = events.find(
     (e): e is StepUpVerifiedEvent => e.type === "step_up.verified"
   );
+  const stepUpCanceled = events.find(
+    (e): e is StepUpCanceledEvent => e.type === "step_up.canceled"
+  );
   const runtimeError = events.find(
     (e): e is RuntimeErrorEvent => e.type === "runtime.error"
   );
@@ -189,7 +194,11 @@ export function translateRequest(
       status = "blocked";
       statusLabel = "Bloqueado";
     } else if (decisionEvent.outcome === "step_up") {
-      if (stepUpVerified) {
+      if (stepUpCanceled) {
+        // User explicitly rejected. Final state.
+        status = "blocked";
+        statusLabel = "Rechazado por vos";
+      } else if (stepUpVerified) {
         // User already confirmed; we're back to thinking until wallet executes.
         status = "thinking";
         statusLabel = "Confirmaste — procesando…";
@@ -279,6 +288,14 @@ function translateToTechLine(
         kind: "step_up_verified",
         text: `STEP-UP verified via ${e.channel}${
           e.verifiedByUsername ? ` by ${e.verifiedByUsername}` : ""
+        }`,
+      };
+    case "step_up.canceled":
+      return {
+        ts: e.ts,
+        kind: "step_up_canceled",
+        text: `STEP-UP canceled via ${e.channel}${
+          e.canceledByUsername ? ` by ${e.canceledByUsername}` : ""
         }`,
       };
     case "wallet.transfer_prepared":
