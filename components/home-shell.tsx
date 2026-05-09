@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { ActivityPanel } from "@/components/activity-panel";
 import { ChatPanel } from "@/components/chat-panel";
-import { LogPanel } from "@/components/log-panel";
 import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { UserMenu } from "@/components/user-menu";
@@ -117,9 +117,9 @@ export function HomeShell({ username }: HomeShellProps) {
           </div>
         </div>
 
-        {/* Right column: live kernel log */}
+        {/* Right column: human-readable activity feed */}
         <div className="border-t border-border lg:border-l lg:border-t-0">
-          <LogPanel />
+          <ActivityPanel />
         </div>
       </section>
     </main>
