@@ -7,6 +7,7 @@ import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { UserMenu } from "@/components/user-menu";
+import { VoiceSession } from "@/components/voice-session";
 import { WalletPanel } from "@/components/wallet-panel";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
 import { cn } from "@/lib/utils";
@@ -130,6 +131,7 @@ export function HomeShell({ username }: HomeShellProps) {
       </section>
 
       {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
+      <VoiceSession />
     </main>
   );
 }
