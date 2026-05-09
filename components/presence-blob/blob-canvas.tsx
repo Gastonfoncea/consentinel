@@ -6,9 +6,20 @@ import * as THREE from "three";
 import { FRAGMENT_SHADER, VERTEX_SHADER } from "./shaders";
 import { STATE_PARAMS, type BlobState } from "./states";
 
-const LERP_RATE = 1.6;
-// How fast a transient pulse decays back to zero (higher = snappier).
-const PULSE_DECAY = 3.2;
+// Stagger lerp rates per parameter type so a state change morphs in
+// layers — color identity emerges first, shape catches up, motion drift
+// settles last. Higher rate = snappier, lower = more gradual.
+const RATE_COLOR = 1.5; // ~2.0s to 95%
+const RATE_GLOW = 1.2; // ~2.5s
+const RATE_SHAPE = 1.0; // ~3.0s
+const RATE_MOTION = 0.6; // ~5.0s
+// How fast a transient pulse decays back to zero. Lower = bleeds out
+// smoother into the new state colors instead of cutting abruptly.
+const PULSE_DECAY = 1.5;
+// Decision flash amplitude on entering allow/deny. 1.0 was a punch
+// that eclipsed the gradual lerp; 0.5 keeps the "moment" without
+// stepping on the layered morph behind it.
+const DECISION_FLASH = 0.5;
 // Camera distance from the blob. Lower = blob looks bigger. The Canvas
 // `camera` prop is only read at mount, so we apply this reactively below
 // via CameraRig — that's what lets HMR pick up changes without a full
@@ -46,7 +57,7 @@ function Blob({ state, pulseSeed }: BlobProps) {
     // for one decisive moment that then decays into the resting pose.
     if (state !== lastStateRef.current) {
       if (state === "allow" || state === "deny") {
-        pulseRef.current = Math.max(pulseRef.current, 1.0);
+        pulseRef.current = Math.max(pulseRef.current, DECISION_FLASH);
       }
       lastStateRef.current = state;
     }
@@ -80,24 +91,31 @@ function Blob({ state, pulseSeed }: BlobProps) {
     if (!mat) return;
     const u = mat.uniforms;
     const t = targetRef.current;
-    const k = Math.min(delta * LERP_RATE, 1);
+    const kColor = Math.min(delta * RATE_COLOR, 1);
+    const kGlow = Math.min(delta * RATE_GLOW, 1);
+    const kShape = Math.min(delta * RATE_SHAPE, 1);
+    const kMotion = Math.min(delta * RATE_MOTION, 1);
 
     u.u_time.value += delta;
-    u.u_intensity.value = THREE.MathUtils.lerp(u.u_intensity.value, t.intensity, k);
-    u.u_speed.value = THREE.MathUtils.lerp(u.u_speed.value, t.speed, k);
+    u.u_intensity.value = THREE.MathUtils.lerp(u.u_intensity.value, t.intensity, kShape);
+    // u_speed is the noise-field flow rate — perceptually how fast the
+    // surface boils. Belongs in the shape tier, not motion: leaving it in
+    // motion meant exiting verifying kept the waves frantic for ~5s after
+    // color and shape had already settled.
+    u.u_speed.value = THREE.MathUtils.lerp(u.u_speed.value, t.speed, kShape);
     u.u_displacement.value = THREE.MathUtils.lerp(
       u.u_displacement.value,
       t.displacement,
-      k
+      kShape
     );
     u.u_glowIntensity.value = THREE.MathUtils.lerp(
       u.u_glowIntensity.value,
       t.glowIntensity,
-      k
+      kGlow
     );
-    u.u_colorA.value.lerp(t.colorA, k);
-    u.u_colorB.value.lerp(t.colorB, k);
-    u.u_glowColor.value.lerp(t.glowColor, k);
+    u.u_colorA.value.lerp(t.colorA, kColor);
+    u.u_colorB.value.lerp(t.colorB, kColor);
+    u.u_glowColor.value.lerp(t.glowColor, kColor);
 
     // Decay transient pulse exponentially toward 0.
     pulseRef.current *= Math.exp(-PULSE_DECAY * delta);
@@ -111,13 +129,14 @@ function Blob({ state, pulseSeed }: BlobProps) {
     }
     u.u_pulse.value = pulseRef.current + heartbeat;
 
-    // Lerp rotation speed and drift amount toward state target.
+    // Rotation and drift use kMotion — slowest tier — so changes in
+    // ambient motion bleed in over several seconds rather than snapping.
     rotationSpeedRef.current = THREE.MathUtils.lerp(
       rotationSpeedRef.current,
       t.rotationSpeed,
-      k
+      kMotion
     );
-    driftRef.current = THREE.MathUtils.lerp(driftRef.current, t.driftAmount, k);
+    driftRef.current = THREE.MathUtils.lerp(driftRef.current, t.driftAmount, kMotion);
 
     if (meshRef.current) {
       // Rotation is now state-driven. `deny` freezes the spin entirely.

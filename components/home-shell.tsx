@@ -28,22 +28,21 @@ const PREVIEW_CYCLE: PreviewMode[] = [
 ];
 
 export function HomeShell({ username }: HomeShellProps) {
-  const { state: liveState, pulseSeed: livePulseSeed } = useBlobState();
+  const { state: liveState, pulseSeed } = useBlobState();
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
-  // Bump on each preview click so allow/deny still flash (the canvas
-  // listens for pulseSeed changes for ripple/flash effects).
-  const [previewPulseSeed, setPreviewPulseSeed] = useState(0);
 
   const isPreview = previewMode !== "live";
   const blobState: BlobState = isPreview ? previewMode : liveState;
-  const pulseSeed = isPreview ? previewPulseSeed : livePulseSeed;
 
+  // Preview only overrides STATE, never pulseSeed. Pulses (evidence
+  // ripples + decision flashes) come from real stream events. Bumping
+  // a seed on every click was punching the blob with a transient
+  // displacement spike, which read as the blob "going crazy".
   const cyclePreview = () => {
     setPreviewMode((prev) => {
       const i = PREVIEW_CYCLE.indexOf(prev);
       return PREVIEW_CYCLE[(i + 1) % PREVIEW_CYCLE.length];
     });
-    setPreviewPulseSeed((s) => s + 1);
   };
 
   return (
