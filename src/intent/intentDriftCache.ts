@@ -14,7 +14,11 @@ const EMPTY_CACHE: IntentDriftCacheFile = {
 };
 
 export class FileIntentDriftCache {
-  constructor(private readonly filePath = resolve(process.cwd(), "data", "intent-drift-cache.json")) {}
+  constructor(private readonly filePath = resolve(
+    process.env.VERCEL || process.env.NOW_REGION ? "/tmp" : process.cwd(),
+    "data",
+    "intent-drift-cache.json"
+  )) {}
 
   cacheKey(input: IntentDriftInput): string {
     const payload = [
