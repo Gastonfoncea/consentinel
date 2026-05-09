@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { ChatPanel } from "@/components/chat-panel";
 import { LogPanel } from "@/components/log-panel";
 import { PhoneMock } from "@/components/phone-mock";
-import { PresenceBlob } from "@/components/presence-blob";
+import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { UserMenu } from "@/components/user-menu";
 import { WalletPanel } from "@/components/wallet-panel";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
@@ -13,8 +14,37 @@ interface HomeShellProps {
   username: string;
 }
 
+// Preview cycle: "live" plays whatever the kernel event stream emits.
+// Every other entry forces the blob into that state so we can demo the UI
+// without triggering real requests. Click the button to advance.
+type PreviewMode = "live" | BlobState;
+const PREVIEW_CYCLE: PreviewMode[] = [
+  "live",
+  "idle",
+  "thinking",
+  "verifying",
+  "allow",
+  "deny",
+];
+
 export function HomeShell({ username }: HomeShellProps) {
-  const blobState = useBlobState();
+  const { state: liveState, pulseSeed: livePulseSeed } = useBlobState();
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
+  // Bump on each preview click so allow/deny still flash (the canvas
+  // listens for pulseSeed changes for ripple/flash effects).
+  const [previewPulseSeed, setPreviewPulseSeed] = useState(0);
+
+  const isPreview = previewMode !== "live";
+  const blobState: BlobState = isPreview ? previewMode : liveState;
+  const pulseSeed = isPreview ? previewPulseSeed : livePulseSeed;
+
+  const cyclePreview = () => {
+    setPreviewMode((prev) => {
+      const i = PREVIEW_CYCLE.indexOf(prev);
+      return PREVIEW_CYCLE[(i + 1) % PREVIEW_CYCLE.length];
+    });
+    setPreviewPulseSeed((s) => s + 1);
+  };
 
   return (
     <main className="flex min-h-screen flex-col">
@@ -46,12 +76,30 @@ export function HomeShell({ username }: HomeShellProps) {
         {/* Left column: blob hero + supporting cards */}
         <div className="flex flex-col">
           <div className="relative min-h-[420px] flex-1 overflow-hidden">
-            <PresenceBlob state={blobState} />
+            <PresenceBlob state={blobState} pulseSeed={pulseSeed} />
             <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-center">
               <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted/70">
                 state · {blobState}
+                {isPreview && (
+                  <span className="ml-2 text-stepup/80">· preview</span>
+                )}
               </p>
             </div>
+            {process.env.NODE_ENV === "development" && (
+              <button
+                type="button"
+                onClick={cyclePreview}
+                className={cn(
+                  "absolute bottom-4 right-4 rounded-full border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] backdrop-blur transition",
+                  isPreview
+                    ? "border-stepup/40 bg-stepup/10 text-stepup hover:bg-stepup/20"
+                    : "border-border bg-background/70 text-muted/80 hover:bg-background hover:text-text"
+                )}
+                aria-label="Cycle blob preview state"
+              >
+                {previewMode === "live" ? "preview ▶" : `${previewMode} ↻`}
+              </button>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2">
             <PhoneMock />

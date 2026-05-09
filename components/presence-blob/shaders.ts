@@ -72,6 +72,7 @@ uniform float u_time;
 uniform float u_intensity;
 uniform float u_speed;
 uniform float u_displacement;
+uniform float u_pulse;
 
 varying float v_noise;
 varying vec3 v_normal;
@@ -87,7 +88,10 @@ void main() {
   noise += snoise(position * 2.6 + vec3(t * 0.7, 0.0, 0.0)) * 0.25;
   noise += snoise(position * 5.0 + vec3(0.0, t * 0.4, t * 0.2)) * 0.125;
 
-  vec3 displaced = position + normal * noise * u_intensity * u_displacement;
+  // Pulse adds a transient outward push along the normal — used for evidence
+  // ripples and decision flashes.
+  float disp = noise * u_intensity * u_displacement + u_pulse * 0.18;
+  vec3 displaced = position + normal * disp;
 
   v_noise = noise;
   v_normal = normalize(normalMatrix * normal);
@@ -102,6 +106,7 @@ uniform vec3 u_colorA;
 uniform vec3 u_colorB;
 uniform vec3 u_glowColor;
 uniform float u_glowIntensity;
+uniform float u_pulse;
 
 varying float v_noise;
 varying vec3 v_normal;
@@ -117,8 +122,8 @@ void main() {
   float colorMix = smoothstep(-0.7, 0.7, v_noise);
   vec3 baseColor = mix(u_colorA, u_colorB, colorMix);
 
-  // Add Fresnel glow on top
-  vec3 finalColor = baseColor + u_glowColor * fresnel * u_glowIntensity;
+  // Fresnel glow + transient pulse glow on top
+  vec3 finalColor = baseColor + u_glowColor * (fresnel * u_glowIntensity + u_pulse * 0.65);
 
   // Slight transparency at the rim for a soft, atmospheric feel
   float alpha = 1.0 - fresnel * 0.18;
