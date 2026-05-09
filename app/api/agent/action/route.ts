@@ -160,7 +160,8 @@ export async function POST(req: Request) {
     agentId: request.agentId,
     phrase,
     actionSummary,
-    actionHash: decision.actionHash
+    actionHash: decision.actionHash,
+    request
   });
 
   publish({

@@ -169,6 +169,25 @@ function EventLine({ event }: { event: KernelStreamEvent }) {
           <TypedLine text={event.prompt} />
         </div>
       );
+    case "voice_message": {
+      const isUser = event.role === "user";
+      return (
+        <div className="font-mono text-xs">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span
+            className={cn(
+              "font-bold",
+              isUser
+                ? "text-allow drop-shadow-[0_0_6px_rgba(0,255,136,0.45)]"
+                : "text-stepup drop-shadow-[0_0_6px_rgba(59,130,246,0.45)]"
+            )}
+          >
+            {isUser ? "USER" : "AGENT"}
+          </span>{" "}
+          <span className="italic text-text">&ldquo;{event.text}&rdquo;</span>
+        </div>
+      );
+    }
     default:
       return null;
   }

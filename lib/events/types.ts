@@ -38,4 +38,11 @@ export type KernelStreamEvent =
       channel: "voice_biometric_callback" | "passkey";
       prompt: string;
     }
+  | {
+      type: "voice_message";
+      ts: number;
+      requestId: string;
+      role: "user" | "agent";
+      text: string;
+    }
   | { type: "ping"; ts: number };

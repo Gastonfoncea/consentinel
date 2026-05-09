@@ -8,7 +8,15 @@ const PUBLIC_PATHS = ["/login"];
 // unguessable and one-shot, which gives us reasonable replay protection.
 // /api/stream is public so the SSE consumer doesn't need a session for the
 // public-facing demo (the events themselves don't carry secrets).
-const PUBLIC_API_PREFIXES = ["/api/auth", "/api/elevenlabs", "/api/stream"];
+const PUBLIC_API_PREFIXES = [
+  "/api/auth",
+  "/api/elevenlabs",
+  "/api/stream",
+  // /api/voice/transcript is hit from the browser SDK callbacks; the
+  // session is set, but treating it as public simplifies replay from
+  // service workers later.
+  "/api/voice"
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

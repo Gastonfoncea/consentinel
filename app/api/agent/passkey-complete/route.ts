@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { publish } from "@/lib/events/bus";
+import { getKernel } from "@/lib/kernel/instance";
 import { getChallenge } from "@/src/stepup/voiceVerification";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,26 @@ export async function POST(req: Request) {
       explanation: payload.reason ?? "Passkey verification failed."
     });
     return NextResponse.json({ ok: true, status: "deny" });
+  }
+
+  // Final allow — record the full verified action into the kernel so the
+  // behavior graph and vector memory learn from the outcome. Future
+  // similar requests will see this as a confirmed precedent.
+  if (challenge.request) {
+    try {
+      getKernel().record({
+        eventId: `passkey_${challenge.challengeId}`,
+        occurredAt: new Date().toISOString(),
+        request: challenge.request,
+        outcome: "allow",
+        verifiedWith: "passkey"
+      });
+    } catch (err) {
+      console.warn(
+        "[passkey-complete] kernel.record after passkey allow failed",
+        err
+      );
+    }
   }
 
   publish({

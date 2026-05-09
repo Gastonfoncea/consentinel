@@ -89,9 +89,24 @@ function VoiceSessionDriver({
   challenge: PendingChallenge | null;
   onResolved?: () => void;
 }) {
-  const { startSession, endSession, status } = useConversation({
+  const { startSession, endSession, status, mode } = useConversation({
     onError: (err) => {
       console.warn("[voice] elevenlabs error", err);
+    },
+    onMessage: (msg) => {
+      // Relay every conversation turn to our SSE bus so the LogPanel +
+      // ChatPanel render the live conversation alongside kernel events.
+      const requestId = challenge?.requestId;
+      if (!requestId || !msg.message) return;
+      const role = msg.source === "user" ? "user" : "agent";
+      // fire-and-forget; if it fails we just lose this transcript line.
+      fetch("/api/voice/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, role, text: msg.message })
+      }).catch(() => {
+        /* ignore */
+      });
     }
   });
 
@@ -139,7 +154,40 @@ function VoiceSessionDriver({
     }
   }, [status]);
 
-  return null;
+  // Surface SDK status + mode underneath the circle so the user sees
+  // "Listening" / "Speaking" / "Connecting" while the verifying state
+  // covers everything in the bigger UI.
+  if (
+    !(
+      voiceState.state === "verifying" &&
+      voiceState.verifyingChannel === "voice_biometric_callback"
+    )
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.2em] text-muted">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${
+          status === "connected"
+            ? "bg-allow"
+            : status === "connecting"
+            ? "bg-stepup animate-pulse"
+            : status === "error"
+            ? "bg-deny"
+            : "bg-muted"
+        }`}
+      />
+      <span>
+        {status === "connected"
+          ? mode === "speaking"
+            ? "agent speaking"
+            : "listening"
+          : status}
+      </span>
+    </div>
+  );
 }
 
 async function startVoiceSession(

@@ -37,6 +37,13 @@ export interface VoiceChallenge {
   status: VoiceChallengeStatus;
   reason?: string;
   resolvedAt?: number;
+  /**
+   * Snapshot of the AgentActionRequest that triggered the step-up. Stored so
+   * the decision endpoint can record it back into the kernel's behavior
+   * graph (via `kernel.record(...)`) once the user's voice + passkey clear
+   * — making future similar requests more familiar.
+   */
+  request?: import("../domain/types").AgentActionRequest;
 }
 
 interface ChallengeStore {
@@ -69,6 +76,8 @@ export interface CreateChallengeInput {
   actionHash?: string;
   // canonical input that we'll hash if actionHash isn't supplied
   canonicalAction?: Record<string, unknown>;
+  // full original request, kept around so the kernel can record() it on resolve
+  request?: import("../domain/types").AgentActionRequest;
 }
 
 export function createChallenge(input: CreateChallengeInput): VoiceChallenge {
@@ -84,7 +93,8 @@ export function createChallenge(input: CreateChallengeInput): VoiceChallenge {
     phrase: input.phrase,
     actionSummary: input.actionSummary,
     expiresAt: Date.now() + TTL_MS,
-    status: "pending"
+    status: "pending",
+    request: input.request
   };
 
   const store = getStore();

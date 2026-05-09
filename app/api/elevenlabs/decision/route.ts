@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { publish } from "@/lib/events/bus";
+import { getKernel } from "@/lib/kernel/instance";
 import {
   getChallenge,
   resolveChallenge,
@@ -57,6 +58,27 @@ export async function POST(req: Request) {
   const challenge = result.challenge;
 
   if (payload.decision === "approve") {
+    // Voice phase passed → record the voice approval into the kernel's
+    // behavior graph so future similar requests benefit from the
+    // familiarity uptick. The final `outcome` is provisional ("step_up")
+    // because we still need passkey to lock in `allow`.
+    if (challenge.request) {
+      try {
+        getKernel().record({
+          eventId: `voice_${challenge.challengeId}`,
+          occurredAt: new Date().toISOString(),
+          request: challenge.request,
+          outcome: "step_up",
+          verifiedWith: "voice_biometric_callback"
+        });
+      } catch (err) {
+        console.warn(
+          "[decision] kernel.record after voice approve failed",
+          err
+        );
+      }
+    }
+
     // Voice phase passed → ask for passkey to complete step-up.
     publish({
       type: "step_up",
