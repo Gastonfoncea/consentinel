@@ -1,0 +1,22 @@
+{
+  "name": "platanus-agent-permission-kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent-first permission kernel using behavior graphs, vector memory, MCP tools, x402 payment context, and voice biometric step-up.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "demo": "tsx src/demo.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
