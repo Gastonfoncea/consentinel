@@ -7,6 +7,10 @@ dist/
 npm-debug.log*
 .agents/
 
+# Foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/
 # Next.js
 .next/
 out/
