@@ -3,6 +3,13 @@ import { dirname, resolve } from "node:path";
 import type { DurableRuntimeEvent, PendingStepUp } from "./types";
 import { normalizeHandoffCode } from "../stepup/presentation";
 
+function runtimeDataPath(...segments: string[]) {
+  if (process.env.VERCEL || process.env.NOW_REGION) {
+    return resolve("/tmp", "data", "runtime", ...segments);
+  }
+  return resolve(process.cwd(), "data", "runtime", ...segments);
+}
+
 interface PendingStepUpFile {
   version: 1;
   items: PendingStepUp[];
@@ -27,7 +34,7 @@ export interface PendingStepUpRepository {
 
 export class FileDurableEventRepository implements DurableEventRepository {
   constructor(
-    private readonly filePath = resolve(process.cwd(), "data", "runtime", "durable-events.jsonl")
+    private readonly filePath = runtimeDataPath("durable-events.jsonl")
   ) {}
 
   async list(): Promise<DurableRuntimeEvent[]> {
@@ -55,7 +62,7 @@ export class FileDurableEventRepository implements DurableEventRepository {
 
 export class FilePendingStepUpRepository implements PendingStepUpRepository {
   constructor(
-    private readonly filePath = resolve(process.cwd(), "data", "runtime", "pending-stepups.json")
+    private readonly filePath = runtimeDataPath("pending-stepups.json")
   ) {}
 
   async list(): Promise<PendingStepUp[]> {
