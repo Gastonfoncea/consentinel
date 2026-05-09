@@ -44,3 +44,57 @@ export async function createStepUpChallengeResponse(kernel: PermissionKernel, re
     challenge: kernel.createStepUpChallenge(request, evaluation.decision)
   };
 }
+
+export async function mockExecuteWalletTransfer(
+  kernel: PermissionKernel,
+  request: AgentActionRequest,
+  now = new Date()
+) {
+  const evaluation = await kernel.decide(request);
+
+  if (evaluation.decision.outcome === "deny") {
+    return {
+      ok: false,
+      status: "blocked",
+      reason: "Decision was deny; mock wallet transfer was not executed.",
+      decision: evaluation.decision,
+      events: evaluation.events
+    };
+  }
+
+  if (evaluation.decision.outcome === "step_up") {
+    return {
+      ok: false,
+      status: "step_up_required",
+      reason: "Mock wallet transfer requires step-up before execution.",
+      decision: evaluation.decision,
+      events: evaluation.events,
+      challenge: kernel.createStepUpChallenge(request, evaluation.decision, now)
+    };
+  }
+
+  const executionEvent: TrackRecordEvent = {
+    eventId: `evt_exec_${evaluation.decision.actionHash.slice(0, 12)}`,
+    occurredAt: now.toISOString(),
+    request,
+    outcome: evaluation.decision.outcome,
+    verifiedWith: "none"
+  };
+  kernel.record(executionEvent);
+
+  return {
+    ok: true,
+    status: "mock_executed",
+    decision: evaluation.decision,
+    events: evaluation.events,
+    execution: {
+      mode: "mock" as const,
+      eventId: executionEvent.eventId,
+      hash: `0x${evaluation.decision.actionHash}`,
+      from: "mock_wallet",
+      to: request.counterparty ?? "unknown",
+      amount: request.amount?.value ?? 0,
+      asset: request.amount?.currency ?? "USDC"
+    }
+  };
+}

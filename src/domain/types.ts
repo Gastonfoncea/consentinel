@@ -20,6 +20,8 @@ export type ContextSource = "direct_user" | "email" | "chat" | "tool_output" | "
 
 export type SourceTrust = "trusted" | "mixed" | "untrusted";
 
+export type CounterpartyRouteTrust = "verified" | "known_historical" | "claimed" | "unknown";
+
 export interface MoneyAmount {
   value: number;
   currency: string;
@@ -53,6 +55,8 @@ export interface PermissionContext {
   sourceTrust: SourceTrust;
   originalUserRequest?: string;
   expectedCounterparty?: string;
+  expectedCounterpartyIdentity?: string;
+  expectedCounterpartyRouteTrust?: CounterpartyRouteTrust;
   expectedAmount?: MoneyAmount;
 }
 
@@ -65,6 +69,8 @@ export interface AgentActionRequest {
   resource: string;
   intent: string;
   counterparty?: string;
+  counterpartyIdentity?: string;
+  counterpartyRouteTrust?: CounterpartyRouteTrust;
   amount?: MoneyAmount;
   dataSensitivity: DataSensitivity;
   reversibility: Reversibility;
@@ -112,7 +118,9 @@ export interface IntentDriftInput {
   source: ContextSource;
   sourceTrust: SourceTrust;
   expectedCounterparty?: string;
+  expectedCounterpartyIdentity?: string;
   actualCounterparty?: string;
+  actualCounterpartyIdentity?: string;
   expectedAmount?: MoneyAmount;
   actualAmount?: MoneyAmount;
 }

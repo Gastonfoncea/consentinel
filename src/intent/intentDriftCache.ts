@@ -23,7 +23,9 @@ export class FileIntentDriftCache {
       input.source,
       input.sourceTrust,
       input.expectedCounterparty ?? "none",
+      input.expectedCounterpartyIdentity ?? "none",
       input.actualCounterparty ?? "none",
+      input.actualCounterpartyIdentity ?? "none",
       formatAmount(input.expectedAmount),
       formatAmount(input.actualAmount)
     ].join("\n");

@@ -1,6 +1,7 @@
 import { actionHash } from "../domain/narrative.js";
 import type {
   AgentActionRequest,
+  CounterpartyRouteTrust,
   DecisionSignal,
   IntentDriftResult,
   NormalizedX402Context,
@@ -45,6 +46,7 @@ export class RiskEngine {
     const amountRisk = amountRiskScore(request, profile, graph.amountMultiple);
     const contextRisk = permissionViabilityRisk(request, intentDrift);
     const vectorRisk = vectorNoveltyRisk(similarActions);
+    const routeTrustRisk = routeTrustRiskScore(graph.routeTrust, graph.newRouteForKnownIdentity);
     const x402Risk = x402RiskScore(normalizedX402);
     const blastRadius = projectedEffects.length
       ? projectedEffects.reduce((sum, effect) => sum + effect.severity * effect.confidence, 0) / projectedEffects.length
@@ -81,6 +83,14 @@ export class RiskEngine {
         `${intentDrift.provider} drift evaluation: ${intentDrift.reasoning}`
       ),
       weightedSignal("risk.permission_viability", contextRisk.score, 0.16, contextRisk.rationale),
+      weightedSignal(
+        "risk.route_trust",
+        routeTrustRisk,
+        0.09,
+        graph.routeTrust
+          ? `Exact route trust=${graph.routeTrust}; newRouteForKnownIdentity=${graph.newRouteForKnownIdentity}.`
+          : "No concrete route trust applies to this action."
+      ),
       weightedSignal(
         "risk.vector_novelty",
         vectorRisk,
@@ -128,6 +138,7 @@ export class RiskEngine {
       amountRisk * 0.13 +
       intentDrift.score * 0.12 +
       contextRisk.score * 0.16 +
+      routeTrustRisk * 0.09 +
       vectorRisk * 0.1 +
       x402Risk * 0.05 +
       blastRadius * 0.17 -
@@ -148,7 +159,7 @@ export class RiskEngine {
       similarActions,
       projectedEffects,
       requiredStepUp,
-      explanation: explainOutcome(outcome, riskScore, hardViolations, request, intentDrift, normalizedX402)
+      explanation: explainOutcome(outcome, riskScore, hardViolations, request, intentDrift, normalizedX402, graph)
     };
   }
 }
@@ -175,6 +186,7 @@ function hardPolicyViolations(
   normalizedX402?: NormalizedX402Context
 ): string[] {
   const violations: string[] = [];
+  const context = request.context;
 
   if (request.action === "share" && request.dataSensitivity === "secret") {
     violations.push("DENY: secret data cannot be shared autonomously.");
@@ -192,11 +204,15 @@ function hardPolicyViolations(
     violations.push("STEP_UP: new counterparty exceeds autonomous spend ceiling.");
   }
 
+  if (graph.newRouteForKnownIdentity && isUntrustedNewRoute(graph.routeTrust)) {
+    violations.push("STEP_UP: new wallet route for a known identity requires first-use verification.");
+  }
+
   if (
-    request.context?.expectedCounterparty &&
-    request.counterparty &&
-    normalize(request.context.expectedCounterparty) !== normalize(request.counterparty) &&
-    request.context.sourceTrust === "untrusted"
+    hasExpectedCounterparty(request) &&
+    hasActualCounterparty(request) &&
+    !counterpartyMatchesDelegation(request) &&
+    context?.sourceTrust === "untrusted"
   ) {
     violations.push("STEP_UP: action diverges from the delegated recipient under untrusted context.");
   }
@@ -284,11 +300,7 @@ function permissionViabilityRisk(
   };
 
   const counterpartyMismatch =
-    context.expectedCounterparty && request.counterparty
-      ? normalize(context.expectedCounterparty) === normalize(request.counterparty)
-        ? 0
-        : 1
-      : 0;
+    hasExpectedCounterparty(request) && hasActualCounterparty(request) ? (counterpartyMatchesDelegation(request) ? 0 : 1) : 0;
 
   const amountMismatch =
     context.expectedAmount && request.amount
@@ -307,8 +319,8 @@ function permissionViabilityRisk(
   const rationale = [
     `Source=${context.source} trust=${context.sourceTrust}.`,
     counterpartyMismatch
-      ? `Requested counterparty ${request.counterparty ?? "none"} differs from expected ${context.expectedCounterparty}.`
-      : "Requested counterparty matches delegated expectations.",
+      ? `Requested counterparty ${request.counterparty ?? "none"} differs from the delegated recipient or identity.`
+      : "Requested counterparty matches delegated expectations, including known identity aliases when present.",
     context.expectedAmount && request.amount
       ? `Requested amount is ${request.amount.value} vs expected ${context.expectedAmount.value}.`
       : "No explicit expected amount was supplied.",
@@ -330,32 +342,54 @@ function x402RiskScore(normalizedX402?: NormalizedX402Context): number {
   return clamp(spendRisk + networkRisk + schemeRisk, 0, 1);
 }
 
+function routeTrustRiskScore(
+  routeTrust: CounterpartyRouteTrust | undefined,
+  newRouteForKnownIdentity: boolean
+): number {
+  if (!routeTrust) return 0;
+
+  switch (routeTrust) {
+    case "verified":
+      return 0.04;
+    case "known_historical":
+      return 0.14;
+    case "claimed":
+      return newRouteForKnownIdentity ? 0.82 : 0.66;
+    case "unknown":
+      return newRouteForKnownIdentity ? 0.88 : 0.72;
+  }
+}
+
 function explainOutcome(
   outcome: PermissionOutcome,
   riskScore: number,
   violations: string[],
   request: AgentActionRequest,
   intentDrift: IntentDriftResult,
-  normalizedX402?: NormalizedX402Context
+  normalizedX402?: NormalizedX402Context,
+  graph?: GraphEvidence
 ): string {
   const driftText = `${intentDrift.provider} drift=${intentDrift.score.toFixed(2)} confidence=${intentDrift.confidence.toFixed(2)}.`;
   const x402Text = normalizedX402
     ? ` x402 ratio=${normalizedX402.requestedToMaximumRatio.toFixed(2)} network=${normalizedX402.network} scheme=${normalizedX402.scheme}.`
     : "";
+  const routeText = graph?.routeTrust
+    ? ` routeTrust=${graph.routeTrust} newRouteForKnownIdentity=${graph.newRouteForKnownIdentity}.`
+    : "";
 
   if (outcome === "deny") {
-    return `Denied ${request.action} on ${request.service}: ${violations.join(" ") || "risk exceeded deny threshold."} ${driftText}${x402Text}`.trim();
+    return `Denied ${request.action} on ${request.service}: ${violations.join(" ") || "risk exceeded deny threshold."} ${driftText}${routeText}${x402Text}`.trim();
   }
 
   if (outcome === "step_up") {
-    return `Step-up required before ${request.action} on ${request.service}; risk=${riskScore.toFixed(2)} and action must be verified out-of-band. ${driftText}${x402Text}`.trim();
+    return `Step-up required before ${request.action} on ${request.service}; risk=${riskScore.toFixed(2)} and action must be verified out-of-band. ${driftText}${routeText}${x402Text}`.trim();
   }
 
   if (outcome === "allow_with_audit") {
-    return `Allowed with audit because risk=${riskScore.toFixed(2)} is moderate but within policy. ${driftText}${x402Text}`.trim();
+    return `Allowed with audit because risk=${riskScore.toFixed(2)} is moderate but within policy. ${driftText}${routeText}${x402Text}`.trim();
   }
 
-  return `Allowed autonomously because risk=${riskScore.toFixed(2)} is low for this user's track record. ${driftText}${x402Text}`.trim();
+  return `Allowed autonomously because risk=${riskScore.toFixed(2)} is low for this user's track record. ${driftText}${routeText}${x402Text}`.trim();
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -366,6 +400,26 @@ function normalize(input: string): string {
   return input.trim().toLowerCase();
 }
 
+function hasExpectedCounterparty(request: AgentActionRequest): boolean {
+  return Boolean(request.context?.expectedCounterpartyIdentity || request.context?.expectedCounterparty);
+}
+
+function hasActualCounterparty(request: AgentActionRequest): boolean {
+  return Boolean(request.counterpartyIdentity || request.counterparty);
+}
+
+function counterpartyMatchesDelegation(request: AgentActionRequest): boolean {
+  if (request.context?.expectedCounterpartyIdentity && request.counterpartyIdentity) {
+    return normalize(request.context.expectedCounterpartyIdentity) === normalize(request.counterpartyIdentity);
+  }
+
+  if (request.context?.expectedCounterparty && request.counterparty) {
+    return normalize(request.context.expectedCounterparty) === normalize(request.counterparty);
+  }
+
+  return false;
+}
+
 function weightedSignal(name: string, score: number, weight: number, rationale: string): DecisionSignal {
   return {
     name,
@@ -374,4 +428,8 @@ function weightedSignal(name: string, score: number, weight: number, rationale: 
     contribution: score * weight,
     rationale
   };
+}
+
+function isUntrustedNewRoute(routeTrust: CounterpartyRouteTrust | undefined): boolean {
+  return routeTrust === "claimed" || routeTrust === "unknown";
 }

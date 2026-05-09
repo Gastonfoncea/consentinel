@@ -18,7 +18,9 @@ const driftInput = {
   source: "email" as const,
   sourceTrust: "untrusted" as const,
   expectedCounterparty: "0x9f2c...juan",
+  expectedCounterpartyIdentity: "juan",
   actualCounterparty: "0x4a8b...evil",
+  actualCounterpartyIdentity: "mallory",
   expectedAmount: { value: 20, currency: "USDC" },
   actualAmount: { value: 20, currency: "USDC" }
 };
@@ -176,4 +178,21 @@ test("demo cache fixture contains the aligned seeded request and can satisfy it 
   assert.equal(fetchCalls, 0);
   assert.equal(result.cacheStatus, "hit");
   assert.equal(result.provider, "anthropic");
+});
+
+test("heuristic intent drift stays aligned when the route changes but the counterparty identity stays the same", () => {
+  const sameIdentityNewWallet = {
+    ...driftInput,
+    originalUserRequest: "Send 20 USDC to Juan for dinner.",
+    proposedActionNarrative: "Send 20 USDC to Juan using his Optimism wallet.",
+    source: "direct_user" as const,
+    sourceTrust: "trusted" as const,
+    actualCounterparty: "0x7d31...juan-optimism",
+    actualCounterpartyIdentity: "juan"
+  };
+
+  const result = heuristicIntentDrift(sameIdentityNewWallet);
+
+  assert.equal(result.driftDetected, false);
+  assert.ok(result.score < 0.42);
 });
