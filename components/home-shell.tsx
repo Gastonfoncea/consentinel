@@ -75,7 +75,13 @@ export function HomeShell({ username }: HomeShellProps) {
       <section className="grid flex-1 grid-cols-1 lg:grid-cols-[3fr_2fr]">
         {/* Left column: blob hero + supporting cards */}
         <div className="flex flex-col">
-          <div className="relative min-h-[420px] flex-1 overflow-hidden">
+          <div
+            className="relative min-h-[420px] flex-1 overflow-hidden"
+            style={{
+              backgroundImage:
+                "radial-gradient(ellipse 55% 45% at 50% 42%, rgba(103, 184, 216, 0.10), transparent 70%)",
+            }}
+          >
             <PresenceBlob state={blobState} pulseSeed={pulseSeed} />
             <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 text-center">
               <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted/70">
