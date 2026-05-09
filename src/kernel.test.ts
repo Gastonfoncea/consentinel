@@ -3,6 +3,8 @@ import test from "node:test";
 import { demoProfile, demoRequests, seedEvents } from "./demoFixtures.js";
 import type { AgentActionRequest, IntentDriftInput, IntentDriftResult } from "./domain/types.js";
 import { PermissionKernel } from "./kernel.js";
+import { FileIntentDriftCache } from "./intent/intentDriftCache.js";
+import { AnthropicIntentDriftEvaluator } from "./intent/intentDrift.js";
 import { normalizeX402Context } from "./payments/x402.js";
 
 const deterministicDrift = {
@@ -105,4 +107,29 @@ test("normalized x402 context and risk signals appear in the decision output", a
   assert.ok(evaluation.decision.signals.some((signal) => signal.name === "risk.x402_payment_context"));
   assert.match(evaluation.decision.explanation, /x402 ratio=/);
   assert.equal(evaluation.decision.outcome, "step_up");
+});
+
+test("kernel decide can resolve the seeded aligned request from the checked-in drift cache without live Claude", async () => {
+  let fetchCalls = 0;
+  const kernel = new PermissionKernel(demoProfile, {
+    intentDriftEvaluator: new AnthropicIntentDriftEvaluator({
+      apiKey: "demo-key",
+      cache: new FileIntentDriftCache(),
+      fetchImpl: async () => {
+        fetchCalls += 1;
+        throw new Error("cache should satisfy this seeded request");
+      }
+    }),
+    clock: () => new Date("2026-05-09T12:00:00.000Z")
+  });
+
+  for (const event of seedEvents) {
+    kernel.record(event);
+  }
+
+  const evaluation = await kernel.decide(demoRequests[0]!);
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(evaluation.intentDrift.cacheStatus, "hit");
+  assert.equal(evaluation.intentDrift.provider, "anthropic");
 });

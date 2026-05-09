@@ -15,7 +15,11 @@ import {
   type GraphRelationshipQuery
 } from "./memory/behaviorGraph.js";
 import { HashingVectorMemory } from "./memory/vectorMemory.js";
-import { AnthropicIntentDriftEvaluator, type IntentDriftEvaluator } from "./intent/intentDrift.js";
+import {
+  AnthropicIntentDriftEvaluator,
+  requestToIntentDriftInput,
+  type IntentDriftEvaluator
+} from "./intent/intentDrift.js";
 import { normalizeX402Context } from "./payments/x402.js";
 import { RiskEngine } from "./policy/riskEngine.js";
 import { VoiceBiometricStepUp } from "./stepup/voiceBiometric.js";
@@ -62,7 +66,7 @@ export class PermissionKernel {
     const graphEvidence = this.graph.explain(request);
     const similarActions = this.vectors.findSimilarActions(request);
     const projectedEffects = this.graph.projectEffects(request);
-    const intentDrift = await this.intentDrift.evaluate(buildIntentDriftInput(request));
+    const intentDrift = await this.intentDrift.evaluate(requestToIntentDriftInput(request));
     const normalizedX402 = normalizeX402Context(request);
     const decision = this.risk.assess({
       request,
@@ -93,7 +97,8 @@ export class PermissionKernel {
         provider: intentDrift.provider,
         driftDetected: intentDrift.driftDetected,
         confidence: intentDrift.confidence,
-        score: intentDrift.score
+        score: intentDrift.score,
+        cacheStatus: intentDrift.cacheStatus ?? null
       }),
       event(at, "x402.normalized", normalizedX402 ? "x402 payment context normalized for policy scoring." : "No x402 payment context attached to this action.", {
         hasX402: Boolean(normalizedX402),
@@ -129,7 +134,7 @@ export class PermissionKernel {
     const graphEvidence = this.graph.explain(request);
     const similarActions = this.vectors.findSimilarActions(request);
     const projectedEffects = this.graph.projectEffects(request);
-    const intentDrift = this.intentDrift.evaluateSync(buildIntentDriftInput(request));
+    const intentDrift = this.intentDrift.evaluateSync(requestToIntentDriftInput(request));
     const normalizedX402 = normalizeX402Context(request);
 
     return this.risk.assess({
@@ -167,27 +172,6 @@ export class PermissionKernel {
   findSimilarActions(request: AgentActionRequest, limit = 5) {
     return this.vectors.findSimilarActions(request, limit);
   }
-}
-
-function buildIntentDriftInput(request: AgentActionRequest) {
-  return {
-    originalUserRequest: request.context?.originalUserRequest,
-    proposedActionNarrative: compactActionNarrative(request),
-    source: request.context?.source ?? "unknown",
-    sourceTrust: request.context?.sourceTrust ?? "mixed",
-    expectedCounterparty: request.context?.expectedCounterparty,
-    actualCounterparty: request.counterparty,
-    expectedAmount: request.context?.expectedAmount,
-    actualAmount: request.amount
-  } as const;
-}
-
-function compactActionNarrative(request: AgentActionRequest): string {
-  return [
-    `intent=${request.intent}`,
-    `counterparty=${request.counterparty ?? "none"}`,
-    request.amount ? `amount=${request.amount.value} ${request.amount.currency}` : "amount=none"
-  ].join(" ");
 }
 
 function event(

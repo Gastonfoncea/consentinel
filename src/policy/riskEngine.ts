@@ -53,71 +53,72 @@ export class RiskEngine {
     const trustedDeviceCredit = profile.trustedDevice ? 0.05 : 0;
 
     signals.push(
-      {
-        name: "risk.base_action",
-        score: baseRisk,
-        rationale: `Base risk for action=${request.action}.`
-      },
-      {
-        name: "risk.sensitivity",
-        score: sensitivityRisk,
-        rationale: `Data sensitivity risk for ${request.dataSensitivity}.`
-      },
-      {
-        name: "risk.reversibility",
-        score: reversibilityRisk,
-        rationale: `Reversibility risk for ${request.reversibility}.`
-      },
-      {
-        name: "risk.amount",
-        score: amountRisk,
-        rationale: request.amount
+      weightedSignal("risk.base_action", baseRisk, 0.16, `Base risk for action=${request.action}.`),
+      weightedSignal(
+        "risk.sensitivity",
+        sensitivityRisk,
+        0.12,
+        `Data sensitivity risk for ${request.dataSensitivity}.`
+      ),
+      weightedSignal(
+        "risk.reversibility",
+        reversibilityRisk,
+        0.11,
+        `Reversibility risk for ${request.reversibility}.`
+      ),
+      weightedSignal(
+        "risk.amount",
+        amountRisk,
+        0.13,
+        request.amount
           ? `Amount risk for ${request.amount.value} ${request.amount.currency}, including autonomous spend policy.`
           : "No value transfer amount was attached."
-      },
-      {
-        name: "risk.intent_drift",
-        score: intentDrift.score,
-        rationale: `${intentDrift.provider} drift evaluation: ${intentDrift.reasoning}`
-      },
-      {
-        name: "risk.permission_viability",
-        score: contextRisk.score,
-        rationale: contextRisk.rationale
-      },
-      {
-        name: "risk.vector_novelty",
-        score: vectorRisk,
-        rationale: similarActions.length
+      ),
+      weightedSignal(
+        "risk.intent_drift",
+        intentDrift.score,
+        0.12,
+        `${intentDrift.provider} drift evaluation: ${intentDrift.reasoning}`
+      ),
+      weightedSignal("risk.permission_viability", contextRisk.score, 0.16, contextRisk.rationale),
+      weightedSignal(
+        "risk.vector_novelty",
+        vectorRisk,
+        0.1,
+        similarActions.length
           ? `Top precedent similarity is ${similarActions[0]?.similarity.toFixed(2)}.`
           : "No prior vector precedents exist for this user."
-      },
-      {
-        name: "risk.projected_blast_radius",
-        score: blastRadius,
-        rationale: "Estimated downstream impact if this permission is granted."
-      },
-      {
-        name: "credit.familiarity",
-        score: familiarityCredit,
-        rationale: "Risk reduction from known graph relationships."
-      }
+      ),
+      weightedSignal(
+        "risk.projected_blast_radius",
+        blastRadius,
+        0.17,
+        "Estimated downstream impact if this permission is granted."
+      ),
+      weightedSignal("credit.familiarity", graph.familiarityScore, -0.28, "Risk reduction from known graph relationships."),
+      weightedSignal(
+        "credit.trusted_device",
+        profile.trustedDevice ? 1 : 0,
+        -0.05,
+        profile.trustedDevice
+          ? "Risk reduction from a device already trusted by the user profile."
+          : "No trusted-device credit applies to this request."
+      )
     );
 
     if (normalizedX402) {
-      signals.push({
-        name: "risk.x402_payment_context",
-        score: x402Risk,
-        rationale: `x402 ${normalizedX402.scheme} on ${normalizedX402.network}; requested/max ratio=${normalizedX402.requestedToMaximumRatio.toFixed(2)}.`
-      });
+      signals.push(
+        weightedSignal(
+          "risk.x402_payment_context",
+          x402Risk,
+          0.05,
+          `x402 ${normalizedX402.scheme} on ${normalizedX402.network}; requested/max ratio=${normalizedX402.requestedToMaximumRatio.toFixed(2)}.`
+        )
+      );
     }
 
     for (const violation of hardViolations) {
-      signals.push({
-        name: "policy.hard_violation",
-        score: 1,
-        rationale: violation
-      });
+      signals.push(weightedSignal("policy.hard_violation", 1, 0.22, violation));
     }
 
     const rawScore =
@@ -363,4 +364,14 @@ function clamp(value: number, min: number, max: number): number {
 
 function normalize(input: string): string {
   return input.trim().toLowerCase();
+}
+
+function weightedSignal(name: string, score: number, weight: number, rationale: string): DecisionSignal {
+  return {
+    name,
+    score,
+    weight,
+    contribution: score * weight,
+    rationale
+  };
 }

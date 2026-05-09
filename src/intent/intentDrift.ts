@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { IntentDriftInput, IntentDriftResult } from "../domain/types.js";
+import type { AgentActionRequest, IntentDriftInput, IntentDriftResult } from "../domain/types.js";
+import { FileIntentDriftCache } from "./intentDriftCache.js";
 
 export interface IntentDriftEvaluator {
   evaluate(input: IntentDriftInput): Promise<IntentDriftResult>;
@@ -10,6 +11,7 @@ interface IntentDriftOptions {
   apiKey?: string;
   model?: string;
   fetchImpl?: typeof fetch;
+  cache?: FileIntentDriftCache;
 }
 
 const anthropicToolSchema = z.object({
@@ -22,22 +24,48 @@ export class AnthropicIntentDriftEvaluator implements IntentDriftEvaluator {
   private readonly apiKey?: string;
   private readonly model: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly cache: FileIntentDriftCache;
 
   constructor(options: IntentDriftOptions = {}) {
     this.apiKey = options.apiKey ?? process.env.ANTHROPIC_API_KEY;
     this.model = options.model ?? process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.cache = options.cache ?? new FileIntentDriftCache();
   }
 
   async evaluate(input: IntentDriftInput): Promise<IntentDriftResult> {
+    const cacheKey = this.cache.cacheKey(input);
+    const cached = this.cache.read(cacheKey);
+    if (cached) {
+      return {
+        ...cached,
+        cacheStatus: "hit",
+        cacheKey
+      };
+    }
+
     if (!this.apiKey || !input.originalUserRequest) {
-      return this.evaluateSync(input);
+      return {
+        ...this.evaluateSync(input),
+        cacheStatus: "bypass",
+        cacheKey
+      };
     }
 
     try {
-      return await this.evaluateWithAnthropic(input);
+      const live = await this.evaluateWithAnthropic(input, cacheKey);
+      this.cache.write(cacheKey, live);
+      return {
+        ...live,
+        cacheStatus: "write",
+        cacheKey
+      };
     } catch {
-      return this.evaluateSync(input);
+      return {
+        ...this.evaluateSync(input),
+        cacheStatus: "fallback",
+        cacheKey
+      };
     }
   }
 
@@ -45,7 +73,11 @@ export class AnthropicIntentDriftEvaluator implements IntentDriftEvaluator {
     return heuristicIntentDrift(input);
   }
 
-  private async evaluateWithAnthropic(input: IntentDriftInput): Promise<IntentDriftResult> {
+  cacheKey(input: IntentDriftInput): string {
+    return this.cache.cacheKey(input);
+  }
+
+  private async evaluateWithAnthropic(input: IntentDriftInput, cacheKey: string): Promise<IntentDriftResult> {
     const response = await this.fetchImpl("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -114,7 +146,9 @@ export class AnthropicIntentDriftEvaluator implements IntentDriftEvaluator {
       confidence: parsed.confidence,
       score: anthropicScore(parsed.drift_detected, parsed.confidence),
       reasoning: parsed.reasoning,
-      provider: "anthropic"
+      provider: "anthropic",
+      cacheStatus: "miss",
+      cacheKey
     };
   }
 }
@@ -150,7 +184,7 @@ export function heuristicIntentDrift(input: IntentDriftInput): IntentDriftResult
     confidence,
     score,
     reasoning: [
-      `Heuristic fallback compared the original request to the proposed action narrative.`,
+      "Heuristic fallback compared the original request to the proposed action narrative.",
       `Token overlap=${overlap.toFixed(2)}.`,
       counterpartyMismatch ? "Counterparty changed from the delegated expectation." : "Counterparty stayed aligned.",
       amountMismatch ? "Requested amount drifted from the delegated amount." : "Requested amount stayed close to the delegated amount."
@@ -159,15 +193,7 @@ export function heuristicIntentDrift(input: IntentDriftInput): IntentDriftResult
   };
 }
 
-function anthropicScore(driftDetected: boolean, confidence: number): number {
-  if (driftDetected) {
-    return clamp(0.52 + confidence * 0.42, 0, 1);
-  }
-
-  return clamp(0.08 + (1 - confidence) * 0.16, 0, 0.32);
-}
-
-function buildAnthropicPrompt(input: IntentDriftInput): string {
+export function buildAnthropicPrompt(input: IntentDriftInput): string {
   return [
     `Original user request: ${input.originalUserRequest ?? "none"}`,
     `Proposed action narrative: ${input.proposedActionNarrative}`,
@@ -179,8 +205,44 @@ function buildAnthropicPrompt(input: IntentDriftInput): string {
   ].join("\n");
 }
 
+export function refreshIntentDriftCache(
+  evaluator: Pick<AnthropicIntentDriftEvaluator, "evaluate">,
+  inputs: IntentDriftInput[]
+): Promise<IntentDriftResult[]> {
+  return Promise.all(inputs.map((input) => evaluator.evaluate(input)));
+}
+
+export function requestToIntentDriftInput(request: AgentActionRequest): IntentDriftInput {
+  return {
+    originalUserRequest: request.context?.originalUserRequest,
+    proposedActionNarrative: compactActionNarrative(request),
+    source: request.context?.source ?? "unknown",
+    sourceTrust: request.context?.sourceTrust ?? "mixed",
+    expectedCounterparty: request.context?.expectedCounterparty,
+    actualCounterparty: request.counterparty,
+    expectedAmount: request.context?.expectedAmount,
+    actualAmount: request.amount
+  };
+}
+
+function anthropicScore(driftDetected: boolean, confidence: number): number {
+  if (driftDetected) {
+    return clamp(0.52 + confidence * 0.42, 0, 1);
+  }
+
+  return clamp(0.08 + (1 - confidence) * 0.16, 0, 0.32);
+}
+
 function formatAmount(amount?: IntentDriftInput["expectedAmount"]): string {
   return amount ? `${amount.value} ${amount.currency}` : "none";
+}
+
+function compactActionNarrative(request: AgentActionRequest): string {
+  return [
+    `intent=${request.intent}`,
+    `counterparty=${request.counterparty ?? "none"}`,
+    request.amount ? `amount=${request.amount.value} ${request.amount.currency}` : "amount=none"
+  ].join(" ");
 }
 
 function tokenOverlap(left: string, right: string): number {

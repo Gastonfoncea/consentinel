@@ -93,6 +93,8 @@ export interface TrackRecordEvent {
 export interface DecisionSignal {
   name: string;
   score: number;
+  weight: number;
+  contribution: number;
   rationale: string;
 }
 
@@ -121,6 +123,8 @@ export interface IntentDriftResult {
   score: number;
   reasoning: string;
   provider: "anthropic" | "heuristic";
+  cacheStatus?: "hit" | "miss" | "write" | "bypass" | "fallback";
+  cacheKey?: string;
 }
 
 export interface ProjectedEffect {

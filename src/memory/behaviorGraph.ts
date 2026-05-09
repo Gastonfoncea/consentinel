@@ -98,16 +98,22 @@ export class BehaviorGraph {
         {
           name: "graph.user_service_familiarity",
           score: userService,
+          weight: 0,
+          contribution: 0,
           rationale: `User-service history strength for ${request.userId} -> ${request.service}.`
         },
         {
           name: "graph.agent_service_familiarity",
           score: agentService,
+          weight: 0,
+          contribution: 0,
           rationale: `Agent-service history strength for ${request.agentId} -> ${request.service}.`
         },
         {
           name: "graph.counterparty_familiarity",
           score: counterparty,
+          weight: 0,
+          contribution: 0,
           rationale: request.counterparty
             ? `Counterparty ${request.counterparty} has ${newCounterparty ? "no" : "some"} prior user history.`
             : "No counterparty is involved in this action."
@@ -115,6 +121,8 @@ export class BehaviorGraph {
         {
           name: "graph.amount_multiple",
           score: Math.min(amountMultiple / 5, 1),
+          weight: 0,
+          contribution: 0,
           rationale: amountMultiple === 0
             ? "No historical payment amount to compare."
             : `Requested amount is ${amountMultiple.toFixed(2)}x the observed average for this relation.`
@@ -122,6 +130,8 @@ export class BehaviorGraph {
         {
           name: "graph.overall_familiarity",
           score: familiarityScore,
+          weight: 0,
+          contribution: 0,
           rationale: "Weighted familiarity across user, agent, service, action, resource, and counterparty edges."
         }
       ]

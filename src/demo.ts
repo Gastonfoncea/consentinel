@@ -18,7 +18,9 @@ for (const request of demoRequests) {
   console.log(`Outcome: ${decision.outcome} risk=${decision.riskScore.toFixed(2)}`);
   console.log(`Why: ${decision.explanation}`);
   console.log(`Top vector precedent: ${decision.similarActions[0]?.similarity.toFixed(2) ?? "none"}`);
-  console.log(`Drift: provider=${evaluation.intentDrift.provider} score=${evaluation.intentDrift.score.toFixed(2)}`);
+  console.log(
+    `Drift: provider=${evaluation.intentDrift.provider} cache=${evaluation.intentDrift.cacheStatus ?? "n/a"} score=${evaluation.intentDrift.score.toFixed(2)}`
+  );
   console.log(`Events: ${evaluation.events.map((entry) => entry.type).join(" -> ")}`);
 
   const x402 = buildX402Permission(request);

@@ -11,6 +11,7 @@
     "lint": "next lint",
     "build:kernel": "tsc -p tsconfig.kernel.json",
     "demo": "tsx src/demo.ts",
+    "demo:cache": "tsx src/intent/warmIntentDriftCache.ts",
     "mcp": "tsx src/mcp/server.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
