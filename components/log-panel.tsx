@@ -1,18 +1,140 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import { useEventStream } from "@/lib/hooks/use-event-stream";
+import { TypedLine } from "@/components/typed-line";
+import type { KernelStreamEvent } from "@/lib/events/types";
+import { cn } from "@/lib/utils";
+
 export function LogPanel() {
+  const { events, connected } = useEventStream();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [events.length]);
+
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-5 py-3">
-        <h2 className="text-sm font-medium text-text">Kernel events</h2>
-        <p className="text-xs text-muted">
-          live SSE log · allow / deny / step-up
-        </p>
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        <div>
+          <h2 className="text-sm font-medium text-text">Kernel events</h2>
+          <p className="text-xs text-muted">live SSE log · allow / deny / step-up</p>
+        </div>
+        <span
+          className={cn(
+            "flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider",
+            connected ? "text-allow" : "text-deny"
+          )}
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              connected ? "bg-allow shadow-glow-allow" : "bg-deny"
+            )}
+          />
+          {connected ? "live" : "off"}
+        </span>
       </div>
-      <div className="flex-1 px-5 py-4">
-        <p className="font-mono text-xs text-muted">
-          {/* Placeholder. PLA-22 will render typed events with glow. */}
-          log scaffolding ready — waiting for events
-        </p>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
+        {events.length === 0 ? (
+          <p className="font-mono text-xs text-muted">waiting for kernel events…</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {events.map((event, i) => (
+              <li key={`${event.ts}-${i}`}>
+                <EventLine event={event} />
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
+}
+
+function EventLine({ event }: { event: KernelStreamEvent }) {
+  const ts = formatTs(event.ts);
+  switch (event.type) {
+    case "request":
+      return (
+        <div className="font-mono text-xs text-text">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="text-stepup">REQUEST</span>{" "}
+          <span className="text-muted">{event.agentId}</span>{" "}
+          <TypedLine text={`${event.action} ${event.service} — ${event.intent}`} />
+        </div>
+      );
+    case "thinking":
+      return (
+        <div className="font-mono text-xs text-muted">
+          <span>[{ts}]</span> · <TypedLine text={event.message} />
+        </div>
+      );
+    case "evidence":
+      return (
+        <div className="font-mono text-xs text-text">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="text-muted">{event.label}:</span>{" "}
+          <TypedLine text={event.detail} />
+        </div>
+      );
+    case "decision":
+      return (
+        <div className={cn("font-mono text-xs", outcomeColor(event.outcome))}>
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className={cn("font-bold", outcomeGlow(event.outcome))}>
+            {event.outcome.toUpperCase()}
+          </span>{" "}
+          <span className="text-muted">risk={event.riskScore.toFixed(2)}</span>{" "}
+          <TypedLine text={event.explanation} />
+        </div>
+      );
+    case "step_up":
+      return (
+        <div className="font-mono text-xs text-stepup">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="font-bold drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]">STEP-UP</span>{" "}
+          <span className="text-muted">{event.channel}</span>{" "}
+          <TypedLine text={event.prompt} />
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function outcomeColor(outcome: string) {
+  switch (outcome) {
+    case "allow":
+    case "allow_with_audit":
+      return "text-allow";
+    case "deny":
+      return "text-deny";
+    case "step_up":
+      return "text-stepup";
+    default:
+      return "text-text";
+  }
+}
+
+function outcomeGlow(outcome: string) {
+  switch (outcome) {
+    case "allow":
+    case "allow_with_audit":
+      return "drop-shadow-[0_0_8px_rgba(0,255,136,0.6)]";
+    case "deny":
+      return "drop-shadow-[0_0_8px_rgba(255,59,48,0.6)]";
+    case "step_up":
+      return "drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]";
+    default:
+      return "";
+  }
+}
+
+function formatTs(ts: number): string {
+  const d = new Date(ts);
+  return d.toTimeString().slice(0, 8);
 }
