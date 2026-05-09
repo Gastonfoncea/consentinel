@@ -5,7 +5,7 @@ import type {
   PermissionOutcome,
   ProjectedEffect,
   TrackRecordEvent
-} from "../domain/types.js";
+} from "../domain/types";
 
 type NodeKind = "user" | "agent" | "service" | "action" | "resource" | "counterparty" | "counterparty_identity";
 

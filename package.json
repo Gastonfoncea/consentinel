@@ -19,6 +19,8 @@
     "@elevenlabs/client": "^1.7.0",
     "@elevenlabs/react": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@simplewebauthn/browser": "^10.0.0",
     "@simplewebauthn/server": "^10.0.1",
     "class-variance-authority": "^0.7.1",
@@ -32,6 +34,7 @@
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.184.0",
     "viem": "^2.48.11",
     "zod": "^4.4.3"
   },

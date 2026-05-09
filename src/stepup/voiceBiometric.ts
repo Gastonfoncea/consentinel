@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { AgentActionRequest, PermissionDecision, StepUpChallenge, UserTrustProfile } from "../domain/types.js";
+import type { AgentActionRequest, PermissionDecision, StepUpChallenge, UserTrustProfile } from "../domain/types";
 
 export class VoiceBiometricStepUp {
   createChallenge(

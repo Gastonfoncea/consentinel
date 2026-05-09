@@ -10,10 +10,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#0A0A0A",
-        surface: "#111111",
-        border: "#1F1F1F",
-        muted: "#6B7280",
+        // Lifted from pure black so the page reads as "premium dark"
+        // (Linear/Vercel territory) instead of "terminal vacío". Slight
+        // cool tint pairs with the blob's cyan/blue idle palette.
+        bg: "#0F1116",
+        background: "#0F1116",
+        surface: "#161A22",
+        border: "#252A35",
+        muted: "#8A94A6",
         text: "#E5E7EB",
         allow: "#00FF88",
         deny: "#FF3B30",

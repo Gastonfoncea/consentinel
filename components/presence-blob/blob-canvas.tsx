@@ -1,0 +1,194 @@
+"use client";
+
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { FRAGMENT_SHADER, VERTEX_SHADER } from "./shaders";
+import { STATE_PARAMS, type BlobState } from "./states";
+
+// Stagger lerp rates per parameter type so a state change morphs in
+// layers — color identity emerges first, shape catches up, motion drift
+// settles last. Higher rate = snappier, lower = more gradual.
+const RATE_COLOR = 1.5; // ~2.0s to 95%
+const RATE_GLOW = 1.2; // ~2.5s
+const RATE_SHAPE = 1.0; // ~3.0s
+const RATE_MOTION = 0.6; // ~5.0s
+// How fast a transient pulse decays back to zero. Lower = bleeds out
+// smoother into the new state colors instead of cutting abruptly.
+const PULSE_DECAY = 1.5;
+// Decision flash amplitude on entering allow/deny. 1.0 was a punch
+// that eclipsed the gradual lerp; 0.5 keeps the "moment" without
+// stepping on the layered morph behind it.
+const DECISION_FLASH = 0.5;
+// Camera distance from the blob. Lower = blob looks bigger. The Canvas
+// `camera` prop is only read at mount, so we apply this reactively below
+// via CameraRig — that's what lets HMR pick up changes without a full
+// page reload while iterating.
+const CAMERA_Z = 7;
+
+function CameraRig({ z }: { z: number }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    camera.position.z = z;
+    camera.updateProjectionMatrix();
+  }, [camera, z]);
+  return null;
+}
+
+interface BlobProps {
+  state: BlobState;
+  pulseSeed: number;
+}
+
+function Blob({ state, pulseSeed }: BlobProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const targetRef = useRef(STATE_PARAMS.idle);
+  const rotationSpeedRef = useRef(STATE_PARAMS.idle.rotationSpeed);
+  const driftRef = useRef(STATE_PARAMS.idle.driftAmount);
+  // Transient pulse envelope (0..1), decays exponentially each frame.
+  const pulseRef = useRef(0);
+  const lastSeedRef = useRef(pulseSeed);
+  const lastStateRef = useRef<BlobState>(state);
+
+  useEffect(() => {
+    targetRef.current = STATE_PARAMS[state];
+    if (state !== lastStateRef.current) {
+      // Decision flash: entering allow/deny punches the pulse up to ~1.0
+      // for one decisive moment that then decays into the resting pose.
+      if (state === "allow" || state === "deny") {
+        pulseRef.current = Math.max(pulseRef.current, DECISION_FLASH);
+      }
+      // Motion (rotation + drift) snaps on decisive states so the blob
+      // doesn't keep wobbling/spinning ~5s after a final answer. Color
+      // still lerps via HSL so identity emerges in one continuous morph.
+      if (state === "allow" || state === "deny" || state === "verifying") {
+        const target = STATE_PARAMS[state];
+        rotationSpeedRef.current = target.rotationSpeed;
+        driftRef.current = target.driftAmount;
+      }
+      lastStateRef.current = state;
+    }
+  }, [state]);
+
+  useEffect(() => {
+    if (pulseSeed !== lastSeedRef.current) {
+      // Smaller bump for evidence ripples — visible but not loud.
+      pulseRef.current = Math.max(pulseRef.current, 0.55);
+      lastSeedRef.current = pulseSeed;
+    }
+  }, [pulseSeed]);
+
+  const uniforms = useMemo(() => {
+    const seed = STATE_PARAMS.idle;
+    return {
+      u_time: { value: 0 },
+      u_intensity: { value: seed.intensity },
+      u_speed: { value: seed.speed },
+      u_displacement: { value: seed.displacement },
+      u_colorA: { value: seed.colorA.clone() },
+      u_colorB: { value: seed.colorB.clone() },
+      u_glowColor: { value: seed.glowColor.clone() },
+      u_glowIntensity: { value: seed.glowIntensity },
+      u_pulse: { value: 0 },
+    };
+  }, []);
+
+  useFrame((_, delta) => {
+    const mat = materialRef.current;
+    if (!mat) return;
+    const u = mat.uniforms;
+    const t = targetRef.current;
+    const kColor = Math.min(delta * RATE_COLOR, 1);
+    const kGlow = Math.min(delta * RATE_GLOW, 1);
+    const kShape = Math.min(delta * RATE_SHAPE, 1);
+    const kMotion = Math.min(delta * RATE_MOTION, 1);
+
+    u.u_time.value += delta;
+    u.u_intensity.value = THREE.MathUtils.lerp(u.u_intensity.value, t.intensity, kShape);
+    // u_speed is the noise-field flow rate — perceptually how fast the
+    // surface boils. Belongs in the shape tier, not motion: leaving it in
+    // motion meant exiting verifying kept the waves frantic for ~5s after
+    // color and shape had already settled.
+    u.u_speed.value = THREE.MathUtils.lerp(u.u_speed.value, t.speed, kShape);
+    u.u_displacement.value = THREE.MathUtils.lerp(
+      u.u_displacement.value,
+      t.displacement,
+      kShape
+    );
+    u.u_glowIntensity.value = THREE.MathUtils.lerp(
+      u.u_glowIntensity.value,
+      t.glowIntensity,
+      kGlow
+    );
+    // HSL lerp routes through the short way around the hue wheel, so
+    // cyan→red goes via magenta/violet instead of muddy brown/gray. RGB
+    // lerp was producing those muddy intermediates whenever the start
+    // and end palettes were far apart in the wheel (idle→deny, thinking→deny).
+    u.u_colorA.value.lerpHSL(t.colorA, kColor);
+    u.u_colorB.value.lerpHSL(t.colorB, kColor);
+    u.u_glowColor.value.lerpHSL(t.glowColor, kColor);
+
+    // Decay transient pulse exponentially toward 0.
+    pulseRef.current *= Math.exp(-PULSE_DECAY * delta);
+
+    // Periodic heartbeat (only verifying has pulseRate > 0). Half-rectified
+    // sine so it reads as discrete beats rather than a smooth oscillation.
+    let heartbeat = 0;
+    if (t.pulseRate > 0) {
+      const phase = u.u_time.value * t.pulseRate * Math.PI * 2;
+      heartbeat = Math.max(0, Math.sin(phase)) * 0.4;
+    }
+    u.u_pulse.value = pulseRef.current + heartbeat;
+
+    // Rotation and drift use kMotion — slowest tier — so changes in
+    // ambient motion bleed in over several seconds rather than snapping.
+    rotationSpeedRef.current = THREE.MathUtils.lerp(
+      rotationSpeedRef.current,
+      t.rotationSpeed,
+      kMotion
+    );
+    driftRef.current = THREE.MathUtils.lerp(driftRef.current, t.driftAmount, kMotion);
+
+    if (meshRef.current) {
+      // Rotation is now state-driven. `deny` freezes the spin entirely.
+      meshRef.current.rotation.y += delta * rotationSpeedRef.current;
+      meshRef.current.rotation.x += delta * rotationSpeedRef.current * 0.4;
+
+      // Floating drift, scaled by state. driftAmount=0 in `deny` pins it.
+      const time = u.u_time.value;
+      const d = driftRef.current;
+      meshRef.current.position.x = Math.sin(time * 0.13) * 0.05 * d;
+      meshRef.current.position.y = Math.cos(time * 0.1) * 0.04 * d;
+      meshRef.current.position.z = Math.sin(time * 0.16) * 0.03 * d;
+    }
+  });
+
+  return (
+    <mesh ref={meshRef}>
+      <icosahedronGeometry args={[1.25, 64]} />
+      <shaderMaterial
+        ref={materialRef}
+        vertexShader={VERTEX_SHADER}
+        fragmentShader={FRAGMENT_SHADER}
+        uniforms={uniforms}
+        transparent
+      />
+    </mesh>
+  );
+}
+
+export default function BlobCanvas({ state, pulseSeed }: BlobProps) {
+  return (
+    <Canvas
+      camera={{ position: [0, 0, CAMERA_Z], fov: 45 }}
+      dpr={[1, 2]}
+      gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      style={{ background: "transparent" }}
+    >
+      <CameraRig z={CAMERA_Z} />
+      <ambientLight intensity={0.4} />
+      <Blob state={state} pulseSeed={pulseSeed} />
+    </Canvas>
+  );
+}

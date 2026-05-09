@@ -114,7 +114,7 @@ test("step-up challenge is bound to the action hash", () => {
 
   const challenge = kernel.createStepUpChallenge(request, decision, new Date("2026-05-09T12:00:00.000Z"));
   assert.equal(challenge.boundActionHash, decision.actionHash);
-  assert.equal(challenge.channel, "voice_biometric_callback");
+  assert.equal(challenge.channel, "passkey");
 });
 
 test("decision signals expose weights and contributions consistent with the computed score", () => {

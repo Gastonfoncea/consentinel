@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { publish } from "@/lib/events/bus";
+import { getSharedKernelRuntime } from "@/src/runtime/runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -9,14 +9,16 @@ export const runtime = "nodejs";
 //
 // The browser-side ElevenLabs SDK calls this whenever the agent emits a
 // new message (user transcript or agent response). We just relay it onto
-// the SSE bus so the LogPanel + ChatPanel can render the conversation
-// live alongside the kernel events.
+// the kernel runtime's event bus so the LogPanel + ChatPanel render the
+// conversation alongside permission events.
 
 const bodySchema = z.object({
   requestId: z.string(),
   role: z.enum(["user", "agent"]),
   text: z.string().min(1).max(2000)
 });
+
+const kernelRuntime = getSharedKernelRuntime();
 
 export async function POST(req: Request) {
   let payload: z.infer<typeof bodySchema>;
@@ -33,8 +35,8 @@ export async function POST(req: Request) {
     );
   }
 
-  publish({
-    type: "voice_message",
+  kernelRuntime.emit({
+    type: "voice.message",
     ts: Date.now(),
     requestId: payload.requestId,
     role: payload.role,

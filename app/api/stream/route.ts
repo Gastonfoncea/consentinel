@@ -1,34 +1,49 @@
-import { kernelEventStream } from "@/lib/events/source";
+import { getSharedKernelRuntime } from "@/src/runtime/runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const kernelRuntime = getSharedKernelRuntime();
+
 export async function GET(req: Request) {
   const encoder = new TextEncoder();
-  const controller = new AbortController();
+  let unsubscribe: (() => void) | undefined;
+  let pingTimer: ReturnType<typeof setInterval> | undefined;
+  let closed = false;
 
-  req.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (pingTimer) clearInterval(pingTimer);
+    if (unsubscribe) unsubscribe();
+  };
 
   const stream = new ReadableStream({
-    async start(streamController) {
-      streamController.enqueue(encoder.encode(`: connected\n\n`));
-      try {
-        for await (const event of kernelEventStream(controller.signal)) {
-          const payload = `data: ${JSON.stringify(event)}\n\n`;
-          streamController.enqueue(encoder.encode(payload));
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          streamController.error(err);
-          return;
-        }
-      } finally {
-        streamController.close();
-      }
+    start(controller) {
+      controller.enqueue(encoder.encode(`: connected\n\n`));
+
+      unsubscribe = kernelRuntime.subscribe((event) => {
+        const payload = `data: ${JSON.stringify(event)}\n\n`;
+        controller.enqueue(encoder.encode(payload));
+      });
+
+      pingTimer = setInterval(() => {
+        const payload = `data: ${JSON.stringify({ type: "ping", ts: Date.now() })}\n\n`;
+        controller.enqueue(encoder.encode(payload));
+      }, 8000);
+
+      req.signal.addEventListener(
+        "abort",
+        () => {
+          close();
+          controller.close();
+        },
+        { once: true }
+      );
     },
     cancel() {
-      controller.abort();
-    },
+      close();
+    }
   });
 
   return new Response(stream, {
@@ -36,7 +51,7 @@ export async function GET(req: Request) {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
+      "X-Accel-Buffering": "no"
+    }
   });
 }

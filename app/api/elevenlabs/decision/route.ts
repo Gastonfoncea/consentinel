@@ -1,22 +1,23 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { publish } from "@/lib/events/bus";
-import { getKernel } from "@/lib/kernel/instance";
-import {
-  getChallenge,
-  resolveChallenge,
-  type VoiceChallenge
-} from "@/src/stepup/voiceVerification";
+import { getSharedKernelRuntime } from "@/src/runtime/runtime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Custom server tools `approve_action` and `deny_action` configured in the
-// ElevenLabs agent dashboard POST here when the user gives a verbal yes/no
-// during the voice biometric step-up.
+// POST /api/elevenlabs/decision
 //
-// On approve → publish step_up{passkey} so the UI shows the passkey prompt.
-// On deny → publish decision{deny} so the UI lights red.
+// ElevenLabs server tools (`approve_action` / `deny_action`) configured in
+// the agent dashboard POST here when the user gives a verbal yes/no during
+// the voice biometric step-up.
+//
+// On deny: cancel the pending step-up so the runtime emits step_up.canceled
+// and the UI lights red.
+// On approve: we don't auto-complete the step-up because the demo uses a
+// two-factor flow (voice + passkey) — voice signals intent, passkey
+// confirms identity. We emit a voice.message event so the activity feed
+// shows the verbal "sí" alongside the upcoming passkey prompt. The actual
+// completion happens via /api/step-up/passkey/finish.
 
 const bodySchema = z.object({
   challenge_id: z.string(),
@@ -26,11 +27,12 @@ const bodySchema = z.object({
     .optional()
 });
 
+const kernelRuntime = getSharedKernelRuntime();
+
 export async function POST(req: Request) {
   let payload: z.infer<typeof bodySchema>;
   try {
-    const json = await req.json();
-    payload = bodySchema.parse(json);
+    payload = bodySchema.parse(await req.json());
   } catch (err) {
     return NextResponse.json(
       {
@@ -42,86 +44,61 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = resolveChallenge({
-    challengeId: payload.challenge_id,
-    outcome: payload.decision,
-    reason: payload.reason
-  });
-
-  if (!result.ok) {
+  const pending = await kernelRuntime.getPendingStepUp(payload.challenge_id);
+  if (!pending) {
     return NextResponse.json(
-      { ok: false, error: result.reason },
-      { status: result.reason === "not_found" ? 404 : 410 }
+      { ok: false, error: "challenge_not_found" },
+      { status: 404 }
+    );
+  }
+  if (pending.status !== "pending") {
+    return NextResponse.json(
+      { ok: false, error: `challenge_status_${pending.status}` },
+      { status: 410 }
     );
   }
 
-  const challenge = result.challenge;
-
-  if (payload.decision === "approve") {
-    // Voice phase passed → record the voice approval into the kernel's
-    // behavior graph so future similar requests benefit from the
-    // familiarity uptick. The final `outcome` is provisional ("step_up")
-    // because we still need passkey to lock in `allow`.
-    if (challenge.request) {
-      try {
-        getKernel().record({
-          eventId: `voice_${challenge.challengeId}`,
-          occurredAt: new Date().toISOString(),
-          request: challenge.request,
-          outcome: "step_up",
-          verifiedWith: "voice_biometric_callback"
-        });
-      } catch (err) {
-        console.warn(
-          "[decision] kernel.record after voice approve failed",
-          err
-        );
-      }
+  if (payload.decision === "deny") {
+    const username = pending.challengeOwnerUsername ?? "voice_agent";
+    try {
+      await kernelRuntime.cancelPendingStepUp(payload.challenge_id, username);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "cancel_failed",
+          detail: err instanceof Error ? err.message : String(err)
+        },
+        { status: 400 }
+      );
     }
-
-    // Voice phase passed → ask for passkey to complete step-up.
-    publish({
-      type: "step_up",
-      ts: Date.now(),
-      requestId: challenge.requestId,
-      channel: "passkey",
-      prompt: "Confirmá con tu passkey en la pantalla."
-    });
     return NextResponse.json({
       ok: true,
-      next: "awaiting_passkey",
-      challengeId: challenge.challengeId
+      next: "denied",
+      challengeId: payload.challenge_id,
+      reason: payload.reason ?? "user_denied"
     });
   }
 
-  // Deny path — voice rejected (or duress / silence / out_of_scope).
-  const explanation =
-    payload.reason === "duress"
-      ? "Coacción detectada en la voz. Acción cancelada."
-      : payload.reason === "silence"
-      ? "Sin respuesta del usuario. Acción cancelada."
-      : payload.reason === "out_of_scope"
-      ? "El usuario no respondió a la verificación. Acción cancelada."
-      : "Usuario rechazó la acción por voz.";
-
-  publish({
-    type: "decision",
+  // Approve path — surface the verbal "sí" as a voice.message so the
+  // activity feed shows the intent. The actual step-up completion happens
+  // via the passkey flow (/api/step-up/passkey/finish).
+  kernelRuntime.emit({
+    type: "voice.message",
     ts: Date.now(),
-    requestId: challenge.requestId,
-    outcome: "deny",
-    riskScore: 1,
-    explanation
+    requestId: pending.requestId,
+    role: "user",
+    text: "(voice approve received — awaiting passkey)"
   });
 
   return NextResponse.json({
     ok: true,
-    next: "denied",
-    challengeId: challenge.challengeId,
-    reason: payload.reason ?? "user_denied"
+    next: "awaiting_passkey",
+    challengeId: payload.challenge_id
   });
 }
 
-// GET for debugging — show the current state of a challenge.
+// GET — debug peek at a challenge's current status.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const challengeId = url.searchParams.get("challengeId");
@@ -131,23 +108,21 @@ export async function GET(req: Request) {
       { status: 400 }
     );
   }
-  const challenge = getChallenge(challengeId);
-  if (!challenge) {
+  const pending = await kernelRuntime.getPendingStepUp(challengeId);
+  if (!pending) {
     return NextResponse.json(
       { ok: false, error: "not_found" },
       { status: 404 }
     );
   }
-  return NextResponse.json({ ok: true, challenge: redact(challenge) });
-}
-
-function redact(challenge: VoiceChallenge) {
-  return {
-    challengeId: challenge.challengeId,
-    requestId: challenge.requestId,
-    status: challenge.status,
-    expiresAt: challenge.expiresAt,
-    resolvedAt: challenge.resolvedAt,
-    reason: challenge.reason
-  };
+  return NextResponse.json({
+    ok: true,
+    challenge: {
+      challengeId: pending.challengeId,
+      requestId: pending.requestId,
+      status: pending.status,
+      channel: pending.channel,
+      expiresAt: pending.expiresAt
+    }
+  });
 }
