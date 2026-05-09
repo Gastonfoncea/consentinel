@@ -165,17 +165,19 @@ export function heuristicIntentDrift(input: IntentDriftInput): IntentDriftResult
   }
 
   const overlap = tokenOverlap(input.originalUserRequest, input.proposedActionNarrative);
-  const counterpartyMismatch =
-    input.expectedCounterparty && input.actualCounterparty
-      ? normalize(input.expectedCounterparty) === normalize(input.actualCounterparty)
-        ? 0
-        : 1
-      : 0;
+  const counterpartyMismatch = counterpartyMatchesExpectation(input) ? 0 : hasCounterpartyComparison(input) ? 1 : 0;
+  const identityAligned = counterpartyIdentityMatches(input);
+  const routeChangedWithinKnownIdentity =
+    identityAligned &&
+    input.expectedCounterparty &&
+    input.actualCounterparty &&
+    normalize(input.expectedCounterparty) !== normalize(input.actualCounterparty);
   const amountMismatch =
     input.expectedAmount && input.actualAmount
       ? clamp((input.actualAmount.value / Math.max(input.expectedAmount.value, 1) - 1) / 2, 0, 1)
       : 0;
-  const score = clamp((1 - overlap) * 0.76 + counterpartyMismatch * 0.16 + amountMismatch * 0.08, 0, 1);
+  const identityCredit = routeChangedWithinKnownIdentity ? 0.22 : identityAligned ? 0.08 : 0;
+  const score = clamp((1 - overlap) * 0.76 + counterpartyMismatch * 0.16 + amountMismatch * 0.08 - identityCredit, 0, 1);
   const driftDetected = score >= 0.42;
   const confidence = clamp(0.52 + Math.abs(score - 0.42) * 0.9, 0, 0.96);
 
@@ -186,7 +188,12 @@ export function heuristicIntentDrift(input: IntentDriftInput): IntentDriftResult
     reasoning: [
       "Heuristic fallback compared the original request to the proposed action narrative.",
       `Token overlap=${overlap.toFixed(2)}.`,
-      counterpartyMismatch ? "Counterparty changed from the delegated expectation." : "Counterparty stayed aligned.",
+      counterpartyMismatch
+        ? "Counterparty changed from the delegated expectation."
+        : "Counterparty stayed aligned, including known identity aliases when present.",
+      routeChangedWithinKnownIdentity
+        ? "The direct wallet route changed, but it still resolves to the delegated identity."
+        : "No route-level identity inheritance adjustment was needed.",
       amountMismatch ? "Requested amount drifted from the delegated amount." : "Requested amount stayed close to the delegated amount."
     ].join(" "),
     provider: "heuristic"
@@ -199,7 +206,9 @@ export function buildAnthropicPrompt(input: IntentDriftInput): string {
     `Proposed action narrative: ${input.proposedActionNarrative}`,
     `Source: ${input.source} trust=${input.sourceTrust}`,
     `Expected counterparty: ${input.expectedCounterparty ?? "none"}`,
+    `Expected counterparty identity: ${input.expectedCounterpartyIdentity ?? "none"}`,
     `Actual counterparty: ${input.actualCounterparty ?? "none"}`,
+    `Actual counterparty identity: ${input.actualCounterpartyIdentity ?? "none"}`,
     `Expected amount: ${formatAmount(input.expectedAmount)}`,
     `Actual amount: ${formatAmount(input.actualAmount)}`
   ].join("\n");
@@ -219,7 +228,9 @@ export function requestToIntentDriftInput(request: AgentActionRequest): IntentDr
     source: request.context?.source ?? "unknown",
     sourceTrust: request.context?.sourceTrust ?? "mixed",
     expectedCounterparty: request.context?.expectedCounterparty,
+    expectedCounterpartyIdentity: request.context?.expectedCounterpartyIdentity,
     actualCounterparty: request.counterparty,
+    actualCounterpartyIdentity: request.counterpartyIdentity,
     expectedAmount: request.context?.expectedAmount,
     actualAmount: request.amount
   };
@@ -241,8 +252,36 @@ function compactActionNarrative(request: AgentActionRequest): string {
   return [
     `intent=${request.intent}`,
     `counterparty=${request.counterparty ?? "none"}`,
+    `counterparty_identity=${request.counterpartyIdentity ?? "none"}`,
     request.amount ? `amount=${request.amount.value} ${request.amount.currency}` : "amount=none"
   ].join(" ");
+}
+
+function hasCounterpartyComparison(input: IntentDriftInput): boolean {
+  return Boolean(
+    (input.expectedCounterpartyIdentity && input.actualCounterpartyIdentity) ||
+      (input.expectedCounterparty && input.actualCounterparty)
+  );
+}
+
+function counterpartyMatchesExpectation(input: IntentDriftInput): boolean {
+  if (input.expectedCounterpartyIdentity && input.actualCounterpartyIdentity) {
+    return normalize(input.expectedCounterpartyIdentity) === normalize(input.actualCounterpartyIdentity);
+  }
+
+  if (input.expectedCounterparty && input.actualCounterparty) {
+    return normalize(input.expectedCounterparty) === normalize(input.actualCounterparty);
+  }
+
+  return false;
+}
+
+function counterpartyIdentityMatches(input: IntentDriftInput): boolean {
+  return Boolean(
+    input.expectedCounterpartyIdentity &&
+      input.actualCounterpartyIdentity &&
+      normalize(input.expectedCounterpartyIdentity) === normalize(input.actualCounterpartyIdentity)
+  );
 }
 
 function tokenOverlap(left: string, right: string): number {

@@ -12,10 +12,7 @@ const deterministicDrift = {
     return this.evaluateSync(input);
   },
   evaluateSync(input: IntentDriftInput): IntentDriftResult {
-    const counterpartyChanged =
-      input.expectedCounterparty && input.actualCounterparty
-        ? input.expectedCounterparty.toLowerCase() !== input.actualCounterparty.toLowerCase()
-        : false;
+    const counterpartyChanged = counterpartyIdentityChanged(input);
     const score = counterpartyChanged ? 0.8 : 0.12;
     return {
       driftDetected: counterpartyChanged,
@@ -75,6 +72,30 @@ test("behavior graph query reports familiarity metadata and amount history", () 
   assert.equal(Number(relationship?.averageAmount.toFixed(2)), 19.33);
 });
 
+test("behavior graph aggregates identity trust separately from the direct wallet route", () => {
+  const kernel = seededKernel();
+  const identityRelationship = kernel.queryGraphRelationship({
+    fromKind: "user",
+    fromLabel: "user_alba",
+    toKind: "counterparty_identity",
+    toLabel: "juan",
+    relation: "trusts_identity"
+  });
+
+  assert.ok(identityRelationship);
+  assert.equal(identityRelationship?.frequency, 3);
+  assert.equal(Number(identityRelationship?.averageAmount.toFixed(2)), 19.33);
+});
+
+test("behavior graph classifies the seeded exact route as known historical", async () => {
+  const kernel = seededKernel();
+  const evaluation = await kernel.decide(demoRequests[0]!);
+
+  assert.equal(evaluation.graphEvidence.routeTrust, "known_historical");
+  assert.equal(evaluation.graphEvidence.routeNovelty, 0);
+  assert.equal(evaluation.graphEvidence.newRouteForKnownIdentity, false);
+});
+
 test("vector similarity lookup is deterministic for seeded actions", () => {
   const kernel = seededKernel();
   const similar = kernel.findSimilarActions(seedEvents[0]!.request, 3);
@@ -109,6 +130,93 @@ test("normalized x402 context and risk signals appear in the decision output", a
   assert.equal(evaluation.decision.outcome, "step_up");
 });
 
+test("a claimed new wallet route for a known identity requires first-use verification", async () => {
+  const kernel = seededKernel();
+  const request: AgentActionRequest = {
+    ...demoRequests[3]!
+  };
+
+  const evaluation = await kernel.decide(request);
+  const routeTrustSignal = evaluation.graphEvidence.signals.find(
+    (signal) => signal.name === "graph.counterparty_route_trust"
+  );
+
+  assert.equal(evaluation.graphEvidence.newCounterparty, false);
+  assert.equal(evaluation.graphEvidence.routeTrust, "claimed");
+  assert.equal(evaluation.graphEvidence.routeNovelty, 1);
+  assert.equal(evaluation.graphEvidence.newRouteForKnownIdentity, true);
+  assert.ok(evaluation.graphEvidence.amountMultiple > 0.9 && evaluation.graphEvidence.amountMultiple < 1.1);
+  assert.ok((routeTrustSignal?.score ?? 0) > 0);
+  assert.equal(evaluation.decision.outcome, "step_up");
+  assert.match(evaluation.decision.explanation, /routeTrust=claimed/);
+  assert.match(evaluation.decision.explanation, /newRouteForKnownIdentity=true/);
+});
+
+test("a verified exact route is promoted after a successful verified event on that wallet", async () => {
+  const kernel = seededKernel();
+  const request: AgentActionRequest = {
+    ...demoRequests[3]!
+  };
+
+  kernel.record({
+    eventId: "evt_verified_new_wallet",
+    occurredAt: "2026-05-04T10:00:00.000Z",
+    request,
+    outcome: "allow",
+    verifiedWith: "passkey"
+  });
+
+  const evaluation = await kernel.decide(request);
+
+  assert.equal(evaluation.graphEvidence.routeTrust, "verified");
+  assert.equal(evaluation.graphEvidence.routeNovelty, 0);
+  assert.notEqual(evaluation.decision.outcome, "step_up");
+});
+
+test("a claimed route is not promoted by successful unverified history alone", async () => {
+  const kernel = seededKernel();
+  const request: AgentActionRequest = {
+    ...demoRequests[3]!
+  };
+
+  kernel.record({
+    eventId: "evt_unverified_new_wallet",
+    occurredAt: "2026-05-04T09:00:00.000Z",
+    request,
+    outcome: "allow",
+    verifiedWith: "none"
+  });
+
+  const evaluation = await kernel.decide({
+    ...request,
+    requestId: "req_claimed_route_after_unverified_history"
+  });
+
+  assert.equal(evaluation.graphEvidence.routeTrust, "known_historical");
+  assert.equal(evaluation.graphEvidence.routeNovelty, 0);
+  assert.notEqual(evaluation.decision.outcome, "step_up");
+});
+
+test("an unknown new route with no known identity still behaves like a new counterparty", async () => {
+  const kernel = seededKernel();
+  const request: AgentActionRequest = {
+    ...demoRequests[1]!,
+    requestId: "req_unknown_new_counterparty",
+    counterparty: "0x85aa...new",
+    counterpartyIdentity: undefined,
+    counterpartyRouteTrust: "unknown",
+    context: {
+      ...demoRequests[1]!.context!,
+      expectedCounterpartyIdentity: undefined
+    }
+  };
+
+  const evaluation = await kernel.decide(request);
+
+  assert.equal(evaluation.graphEvidence.newCounterparty, true);
+  assert.equal(evaluation.graphEvidence.routeTrust, "unknown");
+});
+
 test("kernel decide can resolve the seeded aligned request from the checked-in drift cache without live Claude", async () => {
   let fetchCalls = 0;
   const kernel = new PermissionKernel(demoProfile, {
@@ -133,3 +241,15 @@ test("kernel decide can resolve the seeded aligned request from the checked-in d
   assert.equal(evaluation.intentDrift.cacheStatus, "hit");
   assert.equal(evaluation.intentDrift.provider, "anthropic");
 });
+
+function counterpartyIdentityChanged(input: IntentDriftInput): boolean {
+  if (input.expectedCounterpartyIdentity && input.actualCounterpartyIdentity) {
+    return input.expectedCounterpartyIdentity.toLowerCase() !== input.actualCounterpartyIdentity.toLowerCase();
+  }
+
+  if (input.expectedCounterparty && input.actualCounterparty) {
+    return input.expectedCounterparty.toLowerCase() !== input.actualCounterparty.toLowerCase();
+  }
+
+  return false;
+}

@@ -55,6 +55,8 @@ export class HashingVectorMemory {
       `sens:${request.dataSensitivity}`,
       `rev:${request.reversibility}`,
       `bucket:${amountBucket(request.amount?.value)}`,
+      `identity:${request.counterpartyIdentity ?? "none"}`,
+      `route_trust:${request.counterpartyRouteTrust ?? "none"}`,
       request.counterparty ? `counterparty:${request.counterparty}` : "counterparty:none"
     ];
 

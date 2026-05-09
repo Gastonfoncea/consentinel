@@ -20,6 +20,8 @@ export const seedEvents: TrackRecordEvent[] = [
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
     counterparty: "0x9f2c...juan",
+    counterpartyIdentity: "juan",
+    counterpartyRouteTrust: "known_historical",
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -28,6 +30,8 @@ export const seedEvents: TrackRecordEvent[] = [
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
       expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
     }
   }),
@@ -40,6 +44,8 @@ export const seedEvents: TrackRecordEvent[] = [
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
     counterparty: "0x9f2c...juan",
+    counterpartyIdentity: "juan",
+    counterpartyRouteTrust: "known_historical",
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -48,6 +54,8 @@ export const seedEvents: TrackRecordEvent[] = [
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
       expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
     }
   }),
@@ -60,6 +68,8 @@ export const seedEvents: TrackRecordEvent[] = [
     resource: "usdc_transfer",
     intent: "Send 18 USDC to Juan for dinner after splitting the tip.",
     counterparty: "0x9f2c...juan",
+    counterpartyIdentity: "juan",
+    counterpartyRouteTrust: "known_historical",
     amount: { value: 18, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -68,6 +78,8 @@ export const seedEvents: TrackRecordEvent[] = [
       sourceTrust: "trusted",
       originalUserRequest: "Send Juan the dinner split.",
       expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
     }
   })
@@ -83,6 +95,8 @@ export const demoRequests: AgentActionRequest[] = [
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan for dinner.",
     counterparty: "0x9f2c...juan",
+    counterpartyIdentity: "juan",
+    counterpartyRouteTrust: "known_historical",
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -91,6 +105,8 @@ export const demoRequests: AgentActionRequest[] = [
       sourceTrust: "trusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
       expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
     }
   },
@@ -103,6 +119,7 @@ export const demoRequests: AgentActionRequest[] = [
     resource: "usdc_transfer",
     intent: "Send 20 USDC to Juan using the wallet address mentioned in the latest email thread.",
     counterparty: "0x4a8b...evil",
+    counterpartyRouteTrust: "unknown",
     amount: { value: 20, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "compensatable",
@@ -111,6 +128,8 @@ export const demoRequests: AgentActionRequest[] = [
       sourceTrust: "untrusted",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
       expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
     }
   },
@@ -123,6 +142,8 @@ export const demoRequests: AgentActionRequest[] = [
     resource: "usdc_transfer",
     intent: "Send 350 USDC to Juan because the dinner total changed in a follow-up message.",
     counterparty: "0x9f2c...juan",
+    counterpartyIdentity: "juan",
+    counterpartyRouteTrust: "known_historical",
     amount: { value: 350, currency: "USDC" },
     dataSensitivity: "financial",
     reversibility: "irreversible",
@@ -131,12 +152,38 @@ export const demoRequests: AgentActionRequest[] = [
       sourceTrust: "mixed",
       originalUserRequest: "Send 20 USDC to Juan for dinner.",
       expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
       expectedAmount: { value: 20, currency: "USDC" }
     },
     x402: x402ContextFromEndpoint("https://wallet.example/transfer", { value: 350, currency: "USDC" }, {
       network: "base",
       scheme: "exact"
     })
+  },
+  {
+    requestId: "req_demo_claimed_new_wallet",
+    userId: "user_alba",
+    agentId: "finance_agent",
+    service: "wallet",
+    action: "pay",
+    resource: "usdc_transfer",
+    intent: "Send 20 USDC to Juan using the new wallet he just sent me.",
+    counterparty: "0x7d31...juan-optimism",
+    counterpartyIdentity: "juan",
+    counterpartyRouteTrust: "claimed",
+    amount: { value: 20, currency: "USDC" },
+    dataSensitivity: "financial",
+    reversibility: "compensatable",
+    context: {
+      source: "direct_user",
+      sourceTrust: "trusted",
+      originalUserRequest: "Send 20 USDC to Juan for dinner.",
+      expectedCounterparty: "0x9f2c...juan",
+      expectedCounterpartyIdentity: "juan",
+      expectedCounterpartyRouteTrust: "known_historical",
+      expectedAmount: { value: 20, currency: "USDC" }
+    }
   }
 ];
 

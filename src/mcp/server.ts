@@ -4,13 +4,15 @@ import { z } from "zod";
 import type { Address } from "viem";
 import { PermissionKernel } from "../kernel.js";
 import { demoProfile, seedEvents } from "../demoFixtures.js";
-import type { AgentActionRequest, TrackRecordEvent } from "../domain/types.js";
+import type { AgentActionRequest, CounterpartyRouteTrust, TrackRecordEvent } from "../domain/types.js";
 import {
   assessAgentAction,
   createStepUpChallengeResponse,
   explainPermissionMemory,
+  mockExecuteWalletTransfer,
   recordTrackEvent
 } from "./handlers.js";
+import { counterpartyRouteTrustSchema, eventSchema, requestSchema } from "./schemas.js";
 
 // Wallet module is loaded lazily so the server still boots when .env is empty
 // (Alejandro/Gastón can run the kernel without the wallet stack ready).
@@ -24,52 +26,8 @@ const ethAddressSchema = z
 const usdcAmountSchema = z
   .string()
   .regex(/^\d+(\.\d{1,6})?$/, "Amount must be a decimal string with up to 6 decimals");
-
-const moneySchema = z.object({
-  value: z.number().nonnegative(),
-  currency: z.string().min(3).max(8)
-});
-
-const x402Schema = z.object({
-  endpoint: z.string().url(),
-  maxAmount: moneySchema,
-  network: z.string().optional(),
-  scheme: z.string().optional(),
-  facilitator: z.string().optional()
-});
-
-const contextSchema = z.object({
-  source: z.enum(["direct_user", "email", "chat", "tool_output", "system", "unknown"]),
-  sourceTrust: z.enum(["trusted", "mixed", "untrusted"]),
-  originalUserRequest: z.string().optional(),
-  expectedCounterparty: z.string().optional(),
-  expectedAmount: moneySchema.optional()
-});
-
-const requestSchema = z.object({
-  requestId: z.string(),
-  userId: z.string(),
-  agentId: z.string(),
-  service: z.string(),
-  action: z.enum(["read", "write", "send", "pay", "share", "delete", "trade", "configure"]),
-  resource: z.string(),
-  intent: z.string(),
-  counterparty: z.string().optional(),
-  amount: moneySchema.optional(),
-  dataSensitivity: z.enum(["public", "internal", "personal", "financial", "secret"]),
-  reversibility: z.enum(["reversible", "compensatable", "irreversible"]),
-  x402: x402Schema.optional(),
-  context: contextSchema.optional(),
-  metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional()
-});
-
-const eventSchema = z.object({
-  eventId: z.string(),
-  occurredAt: z.string(),
-  request: requestSchema,
-  outcome: z.enum(["allow", "allow_with_audit", "step_up", "deny"]),
-  verifiedWith: z.enum(["voice_biometric_callback", "passkey", "none"]).optional()
-});
+const sourceSchema = z.enum(["direct_user", "email", "chat", "tool_output", "system", "unknown"]);
+const sourceTrustSchema = z.enum(["trusted", "mixed", "untrusted"]);
 
 const kernel = new PermissionKernel(demoProfile);
 for (const event of seedEvents) {
@@ -147,13 +105,66 @@ server.registerTool(
   "wallet_balance",
   {
     title: "Wallet Balance (USDC, Base Sepolia)",
-    description: "Returns the current USDC balance of the demo wallet on Base Sepolia.",
-    inputSchema: {}
+    description: "Returns the current USDC balance of the demo wallet after kernel evaluation of the read action.",
+    inputSchema: {
+      requestId: z.string().optional(),
+      agentId: z.string().optional(),
+      intent: z.string().optional(),
+      source: sourceSchema.optional(),
+      sourceTrust: sourceTrustSchema.optional(),
+      originalUserRequest: z.string().optional()
+    }
   },
-  async () => {
+  async ({
+    requestId,
+    agentId,
+    intent,
+    source,
+    sourceTrust,
+    originalUserRequest
+  }: {
+    requestId?: string;
+    agentId?: string;
+    intent?: string;
+    source?: AgentActionRequest["context"]["source"];
+    sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+    originalUserRequest?: string;
+  }) => {
+    const request = buildWalletReadRequest({
+      requestId,
+      agentId,
+      intent,
+      source,
+      sourceTrust,
+      originalUserRequest
+    });
+    const evaluation = await kernel.decide(request);
+    if (evaluation.decision.outcome === "deny") {
+      return jsonResponse({
+        ok: false,
+        status: "blocked",
+        decision: evaluation.decision,
+        events: evaluation.events
+      });
+    }
+
+    if (evaluation.decision.outcome === "step_up") {
+      return jsonResponse({
+        ok: false,
+        status: "step_up_required",
+        decision: evaluation.decision,
+        events: evaluation.events,
+        challenge: kernel.createStepUpChallenge(request, evaluation.decision)
+      });
+    }
+
     const w = await loadWallet();
     const balance = await w.getUsdcBalance();
     return jsonResponse({
+      ok: true,
+      status: "allowed",
+      decision: evaluation.decision,
+      events: evaluation.events,
       address: w.walletAddress,
       balance,
       asset: "USDC",
@@ -165,26 +176,71 @@ server.registerTool(
 server.registerTool(
   "wallet_transfer",
   {
-    title: "Wallet Transfer (USDC, Base Sepolia)",
+    title: "Wallet Transfer (USDC, Mocked + Kernel Gated)",
     description:
-      "Execute a USDC transfer on Base Sepolia. Direct execution (no kernel gating) for plumbing validation in CON-10. Will be wrapped by kernel.assess in CON-12.",
+      "Assess a wallet transfer through the kernel, then mock-execute it only when policy allows. Claimed or unknown new wallets can trigger step-up instead of execution.",
     inputSchema: {
       to: ethAddressSchema,
-      amount: usdcAmountSchema
+      amount: usdcAmountSchema,
+      requestId: z.string().optional(),
+      agentId: z.string().optional(),
+      intent: z.string().optional(),
+      counterpartyIdentity: z.string().optional(),
+      counterpartyRouteTrust: counterpartyRouteTrustSchema.optional(),
+      source: sourceSchema.optional(),
+      sourceTrust: sourceTrustSchema.optional(),
+      originalUserRequest: z.string().optional(),
+      expectedCounterparty: z.string().optional(),
+      expectedCounterpartyIdentity: z.string().optional(),
+      expectedCounterpartyRouteTrust: counterpartyRouteTrustSchema.optional()
     }
   },
-  async ({ to, amount }: { to: string; amount: string }) => {
-    const w = await loadWallet();
-    const hash = await w.transferUsdc(to as Address, amount);
-    return jsonResponse({
-      ok: true,
-      hash,
-      explorer: w.basescanTxUrl(hash),
-      from: w.walletAddress,
-      to,
+  async ({
+    to,
+    amount,
+    requestId,
+    agentId,
+    intent,
+    counterpartyIdentity,
+    counterpartyRouteTrust,
+    source,
+    sourceTrust,
+    originalUserRequest,
+    expectedCounterparty,
+    expectedCounterpartyIdentity,
+    expectedCounterpartyRouteTrust
+  }: {
+    to: string;
+    amount: string;
+    requestId?: string;
+    agentId?: string;
+    intent?: string;
+    counterpartyIdentity?: string;
+    counterpartyRouteTrust?: CounterpartyRouteTrust;
+    source?: AgentActionRequest["context"]["source"];
+    sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+    originalUserRequest?: string;
+    expectedCounterparty?: string;
+    expectedCounterpartyIdentity?: string;
+    expectedCounterpartyRouteTrust?: CounterpartyRouteTrust;
+  }) => {
+    const request = buildWalletTransferRequest({
+      to: to as Address,
       amount,
-      asset: "USDC"
+      requestId,
+      agentId,
+      intent,
+      counterpartyIdentity,
+      counterpartyRouteTrust,
+      source,
+      sourceTrust,
+      originalUserRequest,
+      expectedCounterparty,
+      expectedCounterpartyIdentity,
+      expectedCounterpartyRouteTrust
     });
+
+    return jsonResponse(await mockExecuteWalletTransfer(kernel, request));
   }
 );
 
@@ -200,5 +256,74 @@ function jsonResponse<T extends Record<string, unknown>>(data: T) {
       }
     ],
     structuredContent: data
+  };
+}
+
+function buildWalletReadRequest(input: {
+  requestId?: string;
+  agentId?: string;
+  intent?: string;
+  source?: AgentActionRequest["context"]["source"];
+  sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+  originalUserRequest?: string;
+}): AgentActionRequest {
+  return {
+    requestId: input.requestId ?? "req_wallet_balance",
+    userId: demoProfile.userId,
+    agentId: input.agentId ?? "finance_agent",
+    service: "wallet",
+    action: "read",
+    resource: "usdc_balance",
+    intent: input.intent ?? "Read the current USDC balance of the demo wallet.",
+    dataSensitivity: "financial",
+    reversibility: "reversible",
+    context: {
+      source: input.source ?? "direct_user",
+      sourceTrust: input.sourceTrust ?? "trusted",
+      originalUserRequest: input.originalUserRequest
+    }
+  };
+}
+
+function buildWalletTransferRequest(input: {
+  to: Address;
+  amount: string;
+  requestId?: string;
+  agentId?: string;
+  intent?: string;
+  counterpartyIdentity?: string;
+  counterpartyRouteTrust?: CounterpartyRouteTrust;
+  source?: AgentActionRequest["context"]["source"];
+  sourceTrust?: AgentActionRequest["context"]["sourceTrust"];
+  originalUserRequest?: string;
+  expectedCounterparty?: string;
+  expectedCounterpartyIdentity?: string;
+  expectedCounterpartyRouteTrust?: CounterpartyRouteTrust;
+}): AgentActionRequest {
+  return {
+    requestId: input.requestId ?? `req_wallet_transfer_${Date.now()}`,
+    userId: demoProfile.userId,
+    agentId: input.agentId ?? "finance_agent",
+    service: "wallet",
+    action: "pay",
+    resource: "usdc_transfer",
+    intent: input.intent ?? `Send ${input.amount} USDC to ${input.to}.`,
+    counterparty: input.to,
+    counterpartyIdentity: input.counterpartyIdentity,
+    counterpartyRouteTrust: input.counterpartyRouteTrust ?? "unknown",
+    amount: {
+      value: Number(input.amount),
+      currency: "USDC"
+    },
+    dataSensitivity: "financial",
+    reversibility: "compensatable",
+    context: {
+      source: input.source ?? "direct_user",
+      sourceTrust: input.sourceTrust ?? "trusted",
+      originalUserRequest: input.originalUserRequest,
+      expectedCounterparty: input.expectedCounterparty,
+      expectedCounterpartyIdentity: input.expectedCounterpartyIdentity,
+      expectedCounterpartyRouteTrust: input.expectedCounterpartyRouteTrust
+    }
   };
 }
