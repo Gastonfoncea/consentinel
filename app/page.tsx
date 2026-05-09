@@ -2,6 +2,7 @@ import { ChatPanel } from "@/components/chat-panel";
 import { LogPanel } from "@/components/log-panel";
 import { PhoneMock } from "@/components/phone-mock";
 import { UserMenu } from "@/components/user-menu";
+import { WalletPanel } from "@/components/wallet-panel";
 import { getSession } from "@/lib/auth/session";
 
 export default async function Home() {
@@ -21,8 +22,9 @@ export default async function Home() {
         <UserMenu username={username} />
       </header>
 
-      <section className="border-b border-border px-6 py-6">
+      <section className="grid grid-cols-1 gap-4 border-b border-border px-6 py-6 lg:grid-cols-2">
         <PhoneMock />
+        <WalletPanel />
       </section>
 
       <section className="grid flex-1 grid-cols-1 lg:grid-cols-2">
