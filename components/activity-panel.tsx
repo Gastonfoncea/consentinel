@@ -142,19 +142,20 @@ function SectionHeader({
 
 // ---------- Pending (needs action) — protagonista ----------
 
-type VerifyState = "idle" | "verifying" | "error";
+type ActionState = "idle" | "verifying" | "canceling" | "error";
 
 function PendingCard({ request }: { request: TranslatedRequest }) {
   const [expanded, setExpanded] = useState(false);
-  const [verifyState, setVerifyState] = useState<VerifyState>("idle");
+  const [actionState, setActionState] = useState<ActionState>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const challengeId = request.passkeyChallengeId;
-  const canVerify = Boolean(challengeId) && verifyState !== "verifying";
+  const inFlight = actionState === "verifying" || actionState === "canceling";
+  const canAct = Boolean(challengeId) && !inFlight;
 
   async function handleVerify() {
     if (!challengeId) return;
-    setVerifyState("verifying");
+    setActionState("verifying");
     setError(null);
     try {
       const beginRes = await fetch("/api/step-up/passkey/begin", {
@@ -182,7 +183,29 @@ function PendingCard({ request }: { request: TranslatedRequest }) {
       // Success path: kernel emits step_up.verified via SSE and the card
       // moves out of pending automatically. No local state cleanup needed.
     } catch (err) {
-      setVerifyState("error");
+      setActionState("error");
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleCancel() {
+    if (!challengeId) return;
+    setActionState("canceling");
+    setError(null);
+    try {
+      const res = await fetch("/api/step-up/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "cancel failed");
+      }
+      // Success: SSE delivers step_up.canceled and the card flips to
+      // blocked in history. No local state cleanup needed.
+    } catch (err) {
+      setActionState("error");
       setError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -219,16 +242,18 @@ function PendingCard({ request }: { request: TranslatedRequest }) {
           <button
             type="button"
             onClick={handleVerify}
-            disabled={!canVerify}
+            disabled={!canAct}
             className="rounded-full bg-stepup px-5 py-2.5 text-sm font-medium text-bg transition hover:bg-stepup/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {verifyState === "verifying" ? "Verificando…" : request.actionPrompt}
+            {actionState === "verifying" ? "Verificando…" : request.actionPrompt}
           </button>
           <button
             type="button"
-            className="text-xs text-muted transition hover:text-text"
+            onClick={handleCancel}
+            disabled={!canAct}
+            className="text-xs text-muted transition hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Rechazar
+            {actionState === "canceling" ? "Rechazando…" : "Rechazar"}
           </button>
         </div>
       )}
