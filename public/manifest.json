@@ -1,0 +1,25 @@
+{
+  "name": "Consentinel — Permission Kernel",
+  "short_name": "Consentinel",
+  "description": "Agent-first permission kernel. Behavior graph, vector memory, biometric step-up.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F1116",
+  "theme_color": "#0F1116",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
