@@ -16,13 +16,18 @@ const BlobCanvas = dynamic(() => import("./presence-blob/blob-canvas"), {
 
 interface PresenceBlobProps {
   state?: BlobState;
+  pulseSeed?: number;
   className?: string;
 }
 
-export function PresenceBlob({ state = "idle", className }: PresenceBlobProps) {
+export function PresenceBlob({
+  state = "idle",
+  pulseSeed = 0,
+  className,
+}: PresenceBlobProps) {
   return (
     <div className={className ?? "h-full w-full"}>
-      <BlobCanvas state={state} />
+      <BlobCanvas state={state} pulseSeed={pulseSeed} />
     </div>
   );
 }
