@@ -48,7 +48,6 @@ export interface PendingStepUp extends StepUpChallenge {
   verifiedAt?: string;
   verifiedByUsername?: string;
   completedAt?: string;
-  completedAt?: string;
   rejectedAt?: string;
   rejectedReason?: StepUpRejectionReason;
   canceledAt?: string;
@@ -227,6 +226,17 @@ export type RuntimePermissionEvent =
       ts: number;
       requestId?: string;
       message: string;
+    }
+  | {
+      // ElevenLabs SDK transcript line, pushed from the browser via
+      // /api/voice/transcript. Doesn't change kernel state — just lets
+      // the activity feed render the live conversation alongside the
+      // permission events.
+      type: "voice.message";
+      ts: number;
+      requestId: string;
+      role: "user" | "agent";
+      text: string;
     }
   | {
       type: "ping";
