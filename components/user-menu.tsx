@@ -19,8 +19,8 @@ export function UserMenu({ username }: UserMenuProps) {
   }
 
   return (
-    <div className="flex items-center gap-3 font-mono text-xs">
-      <span className="text-muted">
+    <div className="flex shrink-0 items-center gap-3 font-mono text-xs">
+      <span className="hidden text-muted sm:inline">
         signed as <span className="text-text">{username}</span>
       </span>
       <button
