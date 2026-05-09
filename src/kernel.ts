@@ -7,22 +7,22 @@ import type {
   StepUpChallenge,
   TrackRecordEvent,
   UserTrustProfile
-} from "./domain/types.js";
+} from "./domain/types";
 import {
   BehaviorGraph,
   type GraphEvidence,
   type GraphRelationship,
   type GraphRelationshipQuery
-} from "./memory/behaviorGraph.js";
-import { HashingVectorMemory } from "./memory/vectorMemory.js";
+} from "./memory/behaviorGraph";
+import { HashingVectorMemory } from "./memory/vectorMemory";
 import {
   AnthropicIntentDriftEvaluator,
   requestToIntentDriftInput,
   type IntentDriftEvaluator
-} from "./intent/intentDrift.js";
-import { normalizeX402Context } from "./payments/x402.js";
-import { RiskEngine } from "./policy/riskEngine.js";
-import { VoiceBiometricStepUp } from "./stepup/voiceBiometric.js";
+} from "./intent/intentDrift";
+import { normalizeX402Context } from "./payments/x402";
+import { RiskEngine } from "./policy/riskEngine";
+import { VoiceBiometricStepUp } from "./stepup/voiceBiometric";
 
 export interface KernelDecisionTrace {
   decision: PermissionDecision;

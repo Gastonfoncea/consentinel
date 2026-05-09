@@ -29,7 +29,7 @@ export function LogPanel() {
         <div>
           <h2 className="text-sm font-medium text-text">Kernel events</h2>
           <p className="text-xs text-muted">
-            live SSE log · hover to pause · allow / deny / step-up
+            live runtime stream · hover to pause · decisions / step-up / wallet ops
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -124,7 +124,7 @@ function EventLine({ event }: { event: KernelStreamEvent }) {
   const ts = formatTs(event.ts);
 
   switch (event.type) {
-    case "request":
+    case "permission.request_started":
       return (
         <div className="font-mono text-xs text-text">
           <span className="text-muted">[{ts}]</span>{" "}
@@ -133,21 +133,15 @@ function EventLine({ event }: { event: KernelStreamEvent }) {
           <TypedLine text={`${event.action} ${event.service} — ${event.intent}`} />
         </div>
       );
-    case "thinking":
-      return (
-        <div className="font-mono text-xs text-muted">
-          <span>[{ts}]</span> · <TypedLine text={event.message} />
-        </div>
-      );
-    case "evidence":
+    case "permission.trace_event":
       return (
         <div className="font-mono text-xs text-text">
           <span className="text-muted">[{ts}]</span>{" "}
-          <span className="text-muted">{event.label}:</span>{" "}
-          <TypedLine text={event.detail} />
+          <span className="text-muted">{event.eventType}:</span>{" "}
+          <TypedLine text={event.summary} />
         </div>
       );
-    case "decision":
+    case "permission.decision_made":
       return (
         <div className={cn("font-mono text-xs", outcomeColor(event.outcome))}>
           <span className="text-muted">[{ts}]</span>{" "}
@@ -158,7 +152,7 @@ function EventLine({ event }: { event: KernelStreamEvent }) {
           <TypedLine text={event.explanation} />
         </div>
       );
-    case "step_up":
+    case "step_up.challenge_created":
       return (
         <div className="font-mono text-xs text-stepup">
           <span className="text-muted">[{ts}]</span>{" "}
@@ -167,6 +161,43 @@ function EventLine({ event }: { event: KernelStreamEvent }) {
           </span>{" "}
           <span className="text-muted">{event.channel}</span>{" "}
           <TypedLine text={event.prompt} />
+        </div>
+      );
+    case "step_up.verified":
+      return (
+        <div className="font-mono text-xs text-allow">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="font-bold drop-shadow-[0_0_8px_rgba(0,255,136,0.6)]">
+            VERIFIED
+          </span>{" "}
+          <TypedLine
+            text={`challenge ${event.challengeId} confirmed via ${event.channel}${event.verifiedByUsername ? ` by ${event.verifiedByUsername}` : ""}.`}
+          />
+        </div>
+      );
+    case "wallet.transfer_prepared":
+      return (
+        <div className="font-mono text-xs text-text">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="text-allow">PREPARED</span>{" "}
+          <TypedLine text={`${event.amount} ${event.asset} → ${event.to} (${event.mode})`} />
+        </div>
+      );
+    case "wallet.transfer_mock_executed":
+      return (
+        <div className="font-mono text-xs text-allow">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <span className="font-bold drop-shadow-[0_0_8px_rgba(0,255,136,0.6)]">
+            MOCK EXECUTED
+          </span>{" "}
+          <TypedLine text={`${event.amount} ${event.asset} → ${event.to} (${event.mode})`} />
+        </div>
+      );
+    case "runtime.error":
+      return (
+        <div className="font-mono text-xs text-deny">
+          <span className="text-muted">[{ts}]</span>{" "}
+          <TypedLine text={event.message} />
         </div>
       );
     default:

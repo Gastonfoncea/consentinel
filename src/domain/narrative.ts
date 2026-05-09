@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AgentActionRequest } from "./types.js";
+import type { AgentActionRequest } from "./types";
 
 export function canonicalizeAction(request: AgentActionRequest): string {
   const amount = request.amount

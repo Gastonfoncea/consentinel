@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { AgentActionRequest, IntentDriftInput, IntentDriftResult } from "../domain/types.js";
-import { FileIntentDriftCache } from "./intentDriftCache.js";
+import type { AgentActionRequest, IntentDriftInput, IntentDriftResult } from "../domain/types";
+import { FileIntentDriftCache } from "./intentDriftCache";
 
 export interface IntentDriftEvaluator {
   evaluate(input: IntentDriftInput): Promise<IntentDriftResult>;

@@ -1,5 +1,5 @@
-import { amountBucket, canonicalizeAction } from "../domain/narrative.js";
-import type { AgentActionRequest, SimilarAction, TrackRecordEvent } from "../domain/types.js";
+import { amountBucket, canonicalizeAction } from "../domain/narrative";
+import type { AgentActionRequest, SimilarAction, TrackRecordEvent } from "../domain/types";
 
 interface VectorRecord {
   event: TrackRecordEvent;

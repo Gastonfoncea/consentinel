@@ -1,0 +1,97 @@
+import { mkdir, readFile, appendFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import type { DurableRuntimeEvent, PendingStepUp } from "./types";
+
+interface PendingStepUpFile {
+  version: 1;
+  items: PendingStepUp[];
+}
+
+const EMPTY_PENDING_FILE: PendingStepUpFile = {
+  version: 1,
+  items: []
+};
+
+export interface DurableEventRepository {
+  list(): Promise<DurableRuntimeEvent[]>;
+  append(event: DurableRuntimeEvent): Promise<void>;
+}
+
+export interface PendingStepUpRepository {
+  list(): Promise<PendingStepUp[]>;
+  get(challengeId: string): Promise<PendingStepUp | undefined>;
+  upsert(stepUp: PendingStepUp): Promise<void>;
+}
+
+export class FileDurableEventRepository implements DurableEventRepository {
+  constructor(
+    private readonly filePath = resolve(process.cwd(), "data", "runtime", "durable-events.jsonl")
+  ) {}
+
+  async list(): Promise<DurableRuntimeEvent[]> {
+    try {
+      const raw = await readFile(this.filePath, "utf8");
+      return raw
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as DurableRuntimeEvent);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+
+      throw error;
+    }
+  }
+
+  async append(event: DurableRuntimeEvent): Promise<void> {
+    await mkdir(dirname(this.filePath), { recursive: true });
+    await appendFile(this.filePath, JSON.stringify(event) + "\n", "utf8");
+  }
+}
+
+export class FilePendingStepUpRepository implements PendingStepUpRepository {
+  constructor(
+    private readonly filePath = resolve(process.cwd(), "data", "runtime", "pending-stepups.json")
+  ) {}
+
+  async list(): Promise<PendingStepUp[]> {
+    return (await this.load()).items;
+  }
+
+  async get(challengeId: string): Promise<PendingStepUp | undefined> {
+    const file = await this.load();
+    return file.items.find((item) => item.challengeId === challengeId);
+  }
+
+  async upsert(stepUp: PendingStepUp): Promise<void> {
+    const file = await this.load();
+    const index = file.items.findIndex((item) => item.challengeId === stepUp.challengeId);
+    if (index >= 0) {
+      file.items[index] = stepUp;
+    } else {
+      file.items.push(stepUp);
+    }
+
+    await mkdir(dirname(this.filePath), { recursive: true });
+    await writeFile(this.filePath, JSON.stringify(file, null, 2) + "\n", "utf8");
+  }
+
+  private async load(): Promise<PendingStepUpFile> {
+    try {
+      const raw = await readFile(this.filePath, "utf8");
+      const parsed = JSON.parse(raw) as Partial<PendingStepUpFile>;
+      return {
+        version: 1,
+        items: parsed.items ?? []
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return { ...EMPTY_PENDING_FILE, items: [] };
+      }
+
+      throw error;
+    }
+  }
+}
