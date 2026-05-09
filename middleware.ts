@@ -3,7 +3,7 @@ import { getIronSession } from "iron-session";
 import { sessionOptions, type SessionData } from "@/lib/auth/session";
 
 const PUBLIC_PATHS = ["/login", "/manifest.json", "/sw.js"];
-const PUBLIC_API_PREFIXES = ["/api/auth"];
+const PUBLIC_API_PREFIXES = ["/api/auth", "/api/mcp", "/api/step-up/voice"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
