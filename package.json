@@ -5,17 +5,38 @@
   "type": "module",
   "description": "Agent-first permission kernel using behavior graphs, vector memory, MCP tools, x402 payment context, and voice biometric step-up.",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "build:kernel": "tsc -p tsconfig.kernel.json",
     "demo": "tsx src/demo.ts",
+    "demo:cache": "tsx src/intent/warmIntentDriftCache.ts",
     "mcp": "tsx src/mcp/server.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.18.2",
+    "lucide-react": "^1.14.0",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss-animate": "^1.0.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "autoprefixer": "^10.5.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "postcss": "^8.5.14",
+    "tailwindcss": "^3.4.19",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   }

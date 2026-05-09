@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+.env.local
+.env*.local
 .DS_Store
 npm-debug.log*
 .agents/
@@ -9,3 +11,12 @@ npm-debug.log*
 contracts/cache/
 contracts/out/
 contracts/broadcast/
+# Next.js
+.next/
+out/
+next-env.d.ts.bak
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
