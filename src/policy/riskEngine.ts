@@ -2,6 +2,8 @@ import { actionHash } from "../domain/narrative.js";
 import type {
   AgentActionRequest,
   DecisionSignal,
+  IntentDriftResult,
+  NormalizedX402Context,
   PermissionDecision,
   PermissionOutcome,
   ProjectedEffect,
@@ -16,6 +18,8 @@ export interface RiskEngineInput {
   graph: GraphEvidence;
   similarActions: SimilarAction[];
   projectedEffects: ProjectedEffect[];
+  intentDrift: IntentDriftResult;
+  normalizedX402?: NormalizedX402Context;
 }
 
 interface Thresholds {
@@ -32,15 +36,16 @@ const thresholdsByMode: Record<UserTrustProfile["conservatism"], Thresholds> = {
 
 export class RiskEngine {
   assess(input: RiskEngineInput): PermissionDecision {
-    const { request, profile, graph, similarActions, projectedEffects } = input;
+    const { request, profile, graph, similarActions, projectedEffects, intentDrift, normalizedX402 } = input;
     const signals: DecisionSignal[] = [...graph.signals];
-    const hardViolations = hardPolicyViolations(request, profile, graph);
+    const hardViolations = hardPolicyViolations(request, profile, graph, normalizedX402);
     const baseRisk = baseActionRisk(request);
     const sensitivityRisk = sensitivityRiskScore(request);
     const reversibilityRisk = reversibilityRiskScore(request);
     const amountRisk = amountRiskScore(request, profile, graph.amountMultiple);
-    const contextRisk = permissionViabilityRisk(request);
+    const contextRisk = permissionViabilityRisk(request, intentDrift);
     const vectorRisk = vectorNoveltyRisk(similarActions);
+    const x402Risk = x402RiskScore(normalizedX402);
     const blastRadius = projectedEffects.length
       ? projectedEffects.reduce((sum, effect) => sum + effect.severity * effect.confidence, 0) / projectedEffects.length
       : 0.05;
@@ -48,68 +53,84 @@ export class RiskEngine {
     const trustedDeviceCredit = profile.trustedDevice ? 0.05 : 0;
 
     signals.push(
-      {
-        name: "risk.base_action",
-        score: baseRisk,
-        rationale: `Base risk for action=${request.action}.`
-      },
-      {
-        name: "risk.sensitivity",
-        score: sensitivityRisk,
-        rationale: `Data sensitivity risk for ${request.dataSensitivity}.`
-      },
-      {
-        name: "risk.reversibility",
-        score: reversibilityRisk,
-        rationale: `Reversibility risk for ${request.reversibility}.`
-      },
-      {
-        name: "risk.amount",
-        score: amountRisk,
-        rationale: request.amount
+      weightedSignal("risk.base_action", baseRisk, 0.16, `Base risk for action=${request.action}.`),
+      weightedSignal(
+        "risk.sensitivity",
+        sensitivityRisk,
+        0.12,
+        `Data sensitivity risk for ${request.dataSensitivity}.`
+      ),
+      weightedSignal(
+        "risk.reversibility",
+        reversibilityRisk,
+        0.11,
+        `Reversibility risk for ${request.reversibility}.`
+      ),
+      weightedSignal(
+        "risk.amount",
+        amountRisk,
+        0.13,
+        request.amount
           ? `Amount risk for ${request.amount.value} ${request.amount.currency}, including autonomous spend policy.`
           : "No value transfer amount was attached."
-      },
-      {
-        name: "risk.permission_viability",
-        score: contextRisk.score,
-        rationale: contextRisk.rationale
-      },
-      {
-        name: "risk.vector_novelty",
-        score: vectorRisk,
-        rationale: similarActions.length
+      ),
+      weightedSignal(
+        "risk.intent_drift",
+        intentDrift.score,
+        0.12,
+        `${intentDrift.provider} drift evaluation: ${intentDrift.reasoning}`
+      ),
+      weightedSignal("risk.permission_viability", contextRisk.score, 0.16, contextRisk.rationale),
+      weightedSignal(
+        "risk.vector_novelty",
+        vectorRisk,
+        0.1,
+        similarActions.length
           ? `Top precedent similarity is ${similarActions[0]?.similarity.toFixed(2)}.`
           : "No prior vector precedents exist for this user."
-      },
-      {
-        name: "risk.projected_blast_radius",
-        score: blastRadius,
-        rationale: "Estimated downstream impact if this permission is granted."
-      },
-      {
-        name: "credit.familiarity",
-        score: familiarityCredit,
-        rationale: "Risk reduction from known graph relationships."
-      }
+      ),
+      weightedSignal(
+        "risk.projected_blast_radius",
+        blastRadius,
+        0.17,
+        "Estimated downstream impact if this permission is granted."
+      ),
+      weightedSignal("credit.familiarity", graph.familiarityScore, -0.28, "Risk reduction from known graph relationships."),
+      weightedSignal(
+        "credit.trusted_device",
+        profile.trustedDevice ? 1 : 0,
+        -0.05,
+        profile.trustedDevice
+          ? "Risk reduction from a device already trusted by the user profile."
+          : "No trusted-device credit applies to this request."
+      )
     );
 
+    if (normalizedX402) {
+      signals.push(
+        weightedSignal(
+          "risk.x402_payment_context",
+          x402Risk,
+          0.05,
+          `x402 ${normalizedX402.scheme} on ${normalizedX402.network}; requested/max ratio=${normalizedX402.requestedToMaximumRatio.toFixed(2)}.`
+        )
+      );
+    }
+
     for (const violation of hardViolations) {
-      signals.push({
-        name: "policy.hard_violation",
-        score: 1,
-        rationale: violation
-      });
+      signals.push(weightedSignal("policy.hard_violation", 1, 0.22, violation));
     }
 
     const rawScore =
-      baseRisk * 0.18 +
-      sensitivityRisk * 0.14 +
-      reversibilityRisk * 0.12 +
-      amountRisk * 0.14 +
-      contextRisk.score * 0.22 +
-      vectorRisk * 0.12 +
-      blastRadius * 0.18 -
+      baseRisk * 0.16 +
+      sensitivityRisk * 0.12 +
+      reversibilityRisk * 0.11 +
+      amountRisk * 0.13 +
+      intentDrift.score * 0.12 +
+      contextRisk.score * 0.16 +
+      vectorRisk * 0.1 +
+      x402Risk * 0.05 +
+      blastRadius * 0.17 -
       familiarityCredit -
       trustedDeviceCredit +
       hardViolations.length * 0.22;
@@ -127,7 +148,7 @@ export class RiskEngine {
       similarActions,
       projectedEffects,
       requiredStepUp,
-      explanation: explainOutcome(outcome, riskScore, hardViolations, request)
+      explanation: explainOutcome(outcome, riskScore, hardViolations, request, intentDrift, normalizedX402)
     };
   }
 }
@@ -150,7 +171,8 @@ function chooseOutcome(
 function hardPolicyViolations(
   request: AgentActionRequest,
   profile: UserTrustProfile,
-  graph: GraphEvidence
+  graph: GraphEvidence,
+  normalizedX402?: NormalizedX402Context
 ): string[] {
   const violations: string[] = [];
 
@@ -177,6 +199,10 @@ function hardPolicyViolations(
     request.context.sourceTrust === "untrusted"
   ) {
     violations.push("STEP_UP: action diverges from the delegated recipient under untrusted context.");
+  }
+
+  if (normalizedX402 && !normalizedX402.withinConfiguredSpend) {
+    violations.push("STEP_UP: x402 payment request exceeds the delegated payment envelope.");
   }
 
   return violations;
@@ -239,12 +265,15 @@ function vectorNoveltyRisk(similarActions: SimilarAction[]): number {
   return clamp(1 - Math.max(top.similarity, 0) + deniedNeighborPenalty, 0, 1);
 }
 
-function permissionViabilityRisk(request: AgentActionRequest): { score: number; rationale: string } {
+function permissionViabilityRisk(
+  request: AgentActionRequest,
+  intentDrift: IntentDriftResult
+): { score: number; rationale: string } {
   const context = request.context;
   if (!context) {
     return {
-      score: 0.18,
-      rationale: "No explicit delegated-action context was supplied, so viability is inferred from behavior only."
+      score: clamp(0.18 + intentDrift.score * 0.3, 0, 1),
+      rationale: `No explicit delegated-action context was supplied, so viability relies on behavior plus ${intentDrift.provider} drift scoring.`
     };
   }
 
@@ -266,15 +295,11 @@ function permissionViabilityRisk(request: AgentActionRequest): { score: number; 
       ? clamp((request.amount.value / Math.max(context.expectedAmount.value, 1) - 1) / 2, 0, 1)
       : 0;
 
-  const intentDrift = context.originalUserRequest
-    ? 1 - tokenOverlap(context.originalUserRequest, buildActionNarrative(request))
-    : 0.12;
-
   const score = clamp(
     sourceRisk[context.sourceTrust] * 0.3 +
-      counterpartyMismatch * 0.34 +
-      amountMismatch * 0.18 +
-      intentDrift * 0.18,
+      counterpartyMismatch * 0.3 +
+      amountMismatch * 0.15 +
+      intentDrift.score * 0.25,
     0,
     1
   );
@@ -287,65 +312,66 @@ function permissionViabilityRisk(request: AgentActionRequest): { score: number; 
     context.expectedAmount && request.amount
       ? `Requested amount is ${request.amount.value} vs expected ${context.expectedAmount.value}.`
       : "No explicit expected amount was supplied.",
-    context.originalUserRequest
-      ? `Intent overlap with the original user request is ${(1 - intentDrift).toFixed(2)}.`
-      : "No original user request text was supplied for drift comparison."
+    `${intentDrift.provider} drift score=${intentDrift.score.toFixed(2)} confidence=${intentDrift.confidence.toFixed(2)}.`
   ].join(" ");
 
   return { score, rationale };
+}
+
+function x402RiskScore(normalizedX402?: NormalizedX402Context): number {
+  if (!normalizedX402) return 0;
+
+  const spendRisk = normalizedX402.withinConfiguredSpend
+    ? clamp(normalizedX402.requestedToMaximumRatio * 0.42, 0, 0.42)
+    : 0.86;
+  const networkRisk = normalizedX402.network === "any" ? 0.12 : 0.04;
+  const schemeRisk = normalizedX402.scheme === "any" ? 0.08 : 0.03;
+
+  return clamp(spendRisk + networkRisk + schemeRisk, 0, 1);
 }
 
 function explainOutcome(
   outcome: PermissionOutcome,
   riskScore: number,
   violations: string[],
-  request: AgentActionRequest
+  request: AgentActionRequest,
+  intentDrift: IntentDriftResult,
+  normalizedX402?: NormalizedX402Context
 ): string {
+  const driftText = `${intentDrift.provider} drift=${intentDrift.score.toFixed(2)} confidence=${intentDrift.confidence.toFixed(2)}.`;
+  const x402Text = normalizedX402
+    ? ` x402 ratio=${normalizedX402.requestedToMaximumRatio.toFixed(2)} network=${normalizedX402.network} scheme=${normalizedX402.scheme}.`
+    : "";
+
   if (outcome === "deny") {
-    return `Denied ${request.action} on ${request.service}: ${violations.join(" ") || "risk exceeded deny threshold."}`;
+    return `Denied ${request.action} on ${request.service}: ${violations.join(" ") || "risk exceeded deny threshold."} ${driftText}${x402Text}`.trim();
   }
 
   if (outcome === "step_up") {
-    return `Step-up required before ${request.action} on ${request.service}; risk=${riskScore.toFixed(2)} and action must be verified out-of-band.`;
+    return `Step-up required before ${request.action} on ${request.service}; risk=${riskScore.toFixed(2)} and action must be verified out-of-band. ${driftText}${x402Text}`.trim();
   }
 
   if (outcome === "allow_with_audit") {
-    return `Allowed with audit because risk=${riskScore.toFixed(2)} is moderate but within policy.`;
+    return `Allowed with audit because risk=${riskScore.toFixed(2)} is moderate but within policy. ${driftText}${x402Text}`.trim();
   }
 
-  return `Allowed autonomously because risk=${riskScore.toFixed(2)} is low for this user's track record.`;
+  return `Allowed autonomously because risk=${riskScore.toFixed(2)} is low for this user's track record. ${driftText}${x402Text}`.trim();
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function buildActionNarrative(request: AgentActionRequest): string {
-  return [request.action, request.resource, request.intent, request.counterparty ?? ""].join(" ");
-}
-
-function tokenOverlap(left: string, right: string): number {
-  const leftTokens = new Set(tokenize(left));
-  const rightTokens = new Set(tokenize(right));
-  if (leftTokens.size === 0 || rightTokens.size === 0) return 0;
-
-  let intersection = 0;
-  for (const token of leftTokens) {
-    if (rightTokens.has(token)) intersection += 1;
-  }
-
-  const denominator = Math.max(leftTokens.size, rightTokens.size);
-  return denominator === 0 ? 0 : intersection / denominator;
-}
-
-function tokenize(input: string): string[] {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 2);
-}
-
 function normalize(input: string): string {
   return input.trim().toLowerCase();
+}
+
+function weightedSignal(name: string, score: number, weight: number, rationale: string): DecisionSignal {
+  return {
+    name,
+    score,
+    weight,
+    contribution: score * weight,
+    rationale
+  };
 }

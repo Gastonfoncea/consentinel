@@ -6,6 +6,10 @@ Static scopes do not work well for autonomous agents. Either the user grants a p
 
 The MVP is intentionally not UI-first. Agents call MCP tools. The kernel decides whether a requested action should pass autonomously, pass with audit, require biometric step-up, or be denied.
 
+## Repo Note
+
+EPIC-1 intentionally closes on top of the current single-package TypeScript repo plus the merged Next.js scaffold. We are not migrating to `pnpm` workspaces or a monorepo for the hackathon build; the shared kernel boundary for this project is the exported surface rooted in `src/domain/types.ts` and `src/index.ts`.
+
 ## Product Framing
 
 **Permission intelligence for autonomous agents.**
@@ -28,6 +32,19 @@ To support that, requests can carry delegated context such as the original user 
 npm install
 npm run demo
 ```
+
+The demo uses a checked-in intent-drift cache at `data/intent-drift-cache.json`, so the seeded scenarios can run without a live Claude call. If `ANTHROPIC_API_KEY` is set and you want to refresh those cached responses intentionally, run:
+
+```bash
+npm run demo:cache
+```
+
+Anthropic-related environment variables:
+
+- `ANTHROPIC_API_KEY`: enables live intent-drift calls on cache misses
+- `ANTHROPIC_MODEL`: optional override for the default Claude model
+
+Without `ANTHROPIC_API_KEY`, the kernel still works through deterministic local fallback logic. With the cache fixture present, the seeded demo path should resolve from cache before needing either live Claude or heuristic fallback.
 
 Run as an MCP server:
 
