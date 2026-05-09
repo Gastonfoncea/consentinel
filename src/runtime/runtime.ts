@@ -1043,7 +1043,12 @@ export class KernelRuntime {
     }
   }
 
-  private emit(event: RuntimePermissionEvent) {
+  /**
+   * Emit a runtime event onto the bus. Public so external surfaces (e.g.
+   * /api/voice/transcript) can stream non-kernel events through the same
+   * SSE feed the UI consumes — they don't affect kernel state, just UX.
+   */
+  emit(event: RuntimePermissionEvent) {
     this.eventBus.emit(event);
   }
 

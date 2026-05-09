@@ -103,6 +103,16 @@ export type KernelStreamEvent =
       message: string;
     }
   | {
+      // ElevenLabs SDK conversation transcript (user speaking / agent
+      // speaking) — published from the browser via /api/voice/transcript
+      // so the activity panel + log panel can render the live dialog.
+      type: "voice.message";
+      ts: number;
+      requestId: string;
+      role: "user" | "agent";
+      text: string;
+    }
+  | {
       type: "ping";
       ts: number;
     };
