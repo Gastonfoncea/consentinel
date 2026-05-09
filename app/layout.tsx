@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Consentinel — Permission kernel demo",
   description:
-    "Agent-first permission kernel. Behavior graph, vector memory, voice biometric step-up.",
+    "Agent-first permission kernel. Behavior graph, vector memory, biometric (FaceID/TouchID/huella) step-up.",
 };
 
 export default function RootLayout({

@@ -1,11 +1,14 @@
+import { biometricCopy, detectBiometricMethod } from "@/lib/auth/device";
 import type { KernelStreamEvent } from "./types";
 
 export type ActivityStatus =
   | "thinking"
   | "approved"
   | "blocked"
-  | "needs_voice"
-  | "needs_passkey";
+  // Single step-up status. The actual auth method (FaceID, TouchID, huella)
+  // is decided client-side by detectBiometricMethod() and surfaced in
+  // statusLabel/actionPrompt at translate time.
+  | "needs_biometric";
 
 export interface TechnicalLine {
   ts: number;
@@ -31,7 +34,6 @@ export interface TranslatedRequest {
 
 type RequestEvent = Extract<KernelStreamEvent, { type: "request" }>;
 type DecisionEvent = Extract<KernelStreamEvent, { type: "decision" }>;
-type StepUpEvent = Extract<KernelStreamEvent, { type: "step_up" }>;
 
 interface ScenarioCopy {
   headline: (req: RequestEvent) => string;
@@ -97,9 +99,6 @@ export function translateRequest(
   const decisionEvent = events.find((e) => e.type === "decision") as
     | DecisionEvent
     | undefined;
-  const stepUpEvent = events.find((e) => e.type === "step_up") as
-    | StepUpEvent
-    | undefined;
 
   const copy = SCENARIO_COPY[requestEvent.requestId];
 
@@ -127,15 +126,11 @@ export function translateRequest(
       status = "blocked";
       statusLabel = "Bloqueado";
     } else if (decisionEvent.outcome === "step_up") {
-      if (stepUpEvent?.channel === "passkey") {
-        status = "needs_passkey";
-        statusLabel = "Confirmá con tu passkey";
-        actionPrompt = "Confirmar con passkey";
-      } else {
-        status = "needs_voice";
-        statusLabel = "Confirmá con tu voz";
-        actionPrompt = "Confirmar con voz";
-      }
+      status = "needs_biometric";
+      const method = detectBiometricMethod();
+      const bio = biometricCopy(method);
+      statusLabel = bio.status;
+      actionPrompt = bio.action;
     }
   }
 

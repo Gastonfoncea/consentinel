@@ -12,7 +12,7 @@ import {
 } from "@/lib/events/translate";
 import { cn } from "@/lib/utils";
 
-const PENDING_STATUSES: ActivityStatus[] = ["needs_voice", "needs_passkey"];
+const PENDING_STATUSES: ActivityStatus[] = ["needs_biometric"];
 
 function isPending(r: TranslatedRequest): boolean {
   return PENDING_STATUSES.includes(r.status);
@@ -327,8 +327,7 @@ function StatusGlyph({ status }: { status: ActivityStatus }) {
           <span className="relative h-2 w-2 rounded-full bg-muted" />
         </span>
       );
-    case "needs_voice":
-    case "needs_passkey":
+    case "needs_biometric":
       return (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-stepup/15 font-mono text-[10px] text-stepup">
           ⚡
