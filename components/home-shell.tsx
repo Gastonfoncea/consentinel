@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ActivityPanel } from "@/components/activity-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
+import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
 import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { PushToast } from "@/components/push-toast";
 import { UserMenu } from "@/components/user-menu";
 import { WalletPanel } from "@/components/wallet-panel";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
+import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
 import { cn } from "@/lib/utils";
 
 interface HomeShellProps {
@@ -33,6 +35,16 @@ export function HomeShell({ username }: HomeShellProps) {
   const { state: liveState, pulseSeed } = useBlobState();
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
 
+  // Shared handler for both surfaces (in-app toast + OS notification).
+  // PLA-38 will swap this for the verification modal trigger.
+  const handleStepUpOpen = useCallback((requestId: string) => {
+    // eslint-disable-next-line no-console
+    console.log("[step-up] open requested", requestId);
+  }, []);
+
+  const { permission: notifPermission, requestPermission: requestNotifPermission } =
+    useDesktopNotification({ onOpen: handleStepUpOpen });
+
   const isPreview = previewMode !== "live";
   const blobState: BlobState = isPreview ? previewMode : liveState;
 
@@ -52,6 +64,11 @@ export function HomeShell({ username }: HomeShellProps) {
     // only the activity feed scrolls. Mobile keeps natural page scroll
     // (min-h-screen) since stacking blob + panels vertically needs room.
     <main className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
+      <NotificationPermissionBanner
+        permission={notifPermission}
+        onRequest={requestNotifPermission}
+      />
+
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <div className="flex items-center gap-3">
           <span
@@ -130,12 +147,7 @@ export function HomeShell({ username }: HomeShellProps) {
         </div>
       </section>
 
-      <PushToast
-        onOpen={(requestId) => {
-          // eslint-disable-next-line no-console
-          console.log("[push-toast] open requested", requestId);
-        }}
-      />
+      <PushToast onOpen={handleStepUpOpen} />
 
       {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
     </main>
