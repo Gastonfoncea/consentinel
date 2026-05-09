@@ -53,11 +53,19 @@ function Blob({ state, pulseSeed }: BlobProps) {
 
   useEffect(() => {
     targetRef.current = STATE_PARAMS[state];
-    // Decision flash: entering allow/deny punches the pulse up to ~1.0
-    // for one decisive moment that then decays into the resting pose.
     if (state !== lastStateRef.current) {
+      // Decision flash: entering allow/deny punches the pulse up to ~1.0
+      // for one decisive moment that then decays into the resting pose.
       if (state === "allow" || state === "deny") {
         pulseRef.current = Math.max(pulseRef.current, DECISION_FLASH);
+      }
+      // Motion (rotation + drift) snaps on decisive states so the blob
+      // doesn't keep wobbling/spinning ~5s after a final answer. Color
+      // still lerps via HSL so identity emerges in one continuous morph.
+      if (state === "allow" || state === "deny" || state === "verifying") {
+        const target = STATE_PARAMS[state];
+        rotationSpeedRef.current = target.rotationSpeed;
+        driftRef.current = target.driftAmount;
       }
       lastStateRef.current = state;
     }
@@ -113,9 +121,13 @@ function Blob({ state, pulseSeed }: BlobProps) {
       t.glowIntensity,
       kGlow
     );
-    u.u_colorA.value.lerp(t.colorA, kColor);
-    u.u_colorB.value.lerp(t.colorB, kColor);
-    u.u_glowColor.value.lerp(t.glowColor, kColor);
+    // HSL lerp routes through the short way around the hue wheel, so
+    // cyan→red goes via magenta/violet instead of muddy brown/gray. RGB
+    // lerp was producing those muddy intermediates whenever the start
+    // and end palettes were far apart in the wheel (idle→deny, thinking→deny).
+    u.u_colorA.value.lerpHSL(t.colorA, kColor);
+    u.u_colorB.value.lerpHSL(t.colorB, kColor);
+    u.u_glowColor.value.lerpHSL(t.glowColor, kColor);
 
     // Decay transient pulse exponentially toward 0.
     pulseRef.current *= Math.exp(-PULSE_DECAY * delta);

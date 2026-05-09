@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ActivityPanel } from "@/components/activity-panel";
 import { ChatPanel } from "@/components/chat-panel";
+import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { UserMenu } from "@/components/user-menu";
@@ -127,6 +128,8 @@ export function HomeShell({ username }: HomeShellProps) {
           <ActivityPanel />
         </div>
       </section>
+
+      {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
     </main>
   );
 }
