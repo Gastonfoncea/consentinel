@@ -194,16 +194,6 @@ export function HomeShell({ username, pendingChallenge }: HomeShellProps) {
               </button>
             )}
           </div>
-          {/* Sidecar that appears when the user lands here from a Kapso
-              WhatsApp deeplink. Stacks below the blob on mobile, sits right
-              above the wallet cards on desktop — so the blob remains hero,
-              and the verification card is the next thing the eye lands on
-              while Melisa starts narrating. */}
-          {pendingChallenge && (
-            <div className="border-t border-border p-4">
-              <StepUpVerificationCard initialChallenge={pendingChallenge} />
-            </div>
-          )}
           <div className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2">
             <WalletPendingAction
               onStepUpClick={handleStepUpOpen}
@@ -217,10 +207,21 @@ export function HomeShell({ username, pendingChallenge }: HomeShellProps) {
           </div>
         </div>
 
-        {/* Right column: human-readable activity feed. min-h-0 lets the
-            panel's internal overflow-y-auto actually clip + scroll on lg. */}
-        <div className="border-t border-border lg:min-h-0 lg:flex-[11] lg:border-l lg:border-t-0">
-          <ActivityPanel />
+        {/* Right column: step-up verification card sits at the top when a
+            Kapso deeplink hydrated the dashboard, so the blob keeps its full
+            size on the left and the action surface lands on the right where
+            the user's eye is already trained for activity / decisions. The
+            activity panel below scrolls internally on its own remaining
+            height. */}
+        <div className="flex flex-col border-t border-border lg:min-h-0 lg:flex-[11] lg:border-l lg:border-t-0">
+          {pendingChallenge && (
+            <div className="shrink-0 border-b border-border p-4">
+              <StepUpVerificationCard initialChallenge={pendingChallenge} />
+            </div>
+          )}
+          <div className="flex-1 lg:min-h-0">
+            <ActivityPanel />
+          </div>
         </div>
       </section>
 
