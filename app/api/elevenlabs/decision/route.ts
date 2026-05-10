@@ -80,15 +80,35 @@ export async function POST(req: Request) {
     });
   }
 
-  // Approve path — surface the verbal "sí" as a voice.message so the
-  // activity feed shows the intent. The actual step-up completion happens
-  // via the passkey flow (/api/step-up/passkey/finish).
+  // Approve path — emit two events:
+  //
+  // 1. voice.message: human-readable trace for the activity feed.
+  // 2. step_up.phone_confirmed: machine signal that the dashboard can
+  //    listen for to AUTO-TRIGGER the passkey prompt. Without this,
+  //    the user has to click a button after Melisa hangs up. With it,
+  //    the WebAuthn dialog pops up automatically and the user just
+  //    does Touch ID / Face ID — single biometric per scenario, voice
+  //    pre-confirms intent, passkey signs the actual broadcast.
+  //
+  // We emit phone_confirmed as a pure event here (no kernel state
+  // mutation) because the canonical flow uses requiredStepUp=passkey
+  // and confirmPhoneStepUp() asserts channel=voice_biometric_callback.
+  // The state still advances normally via /api/step-up/passkey/finish.
+  const now = Date.now();
   kernelRuntime.emit({
     type: "voice.message",
-    ts: Date.now(),
+    ts: now,
     requestId: pending.requestId,
     role: "user",
     text: "(voice approve received — awaiting passkey)"
+  });
+  kernelRuntime.emit({
+    type: "step_up.phone_confirmed",
+    ts: now,
+    requestId: pending.requestId,
+    challengeId: payload.challenge_id,
+    channel: pending.channel,
+    provider: "elevenlabs"
   });
 
   return NextResponse.json({

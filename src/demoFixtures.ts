@@ -1,8 +1,20 @@
 import type { AgentActionRequest, TrackRecordEvent, UserTrustProfile } from "./domain/types";
 import { x402ContextFromEndpoint } from "./payments/x402";
 
-export const demoKnownCounterparty = "0x9f2c4a6b8d0e1f2233445566778899aabbccddee";
+// Real address controlled by Tomás — the on-chain destination of the
+// "aligned" scenario (autonomous allow). Replaces a synthetic vanity
+// address so any USDC actually sent during the demo lands somewhere
+// recoverable instead of being burned at a void.
+export const demoKnownCounterparty = "0x7AfFcabDE731e98096DC71f6Fc882fCCB20d8c53";
+// Synthetic — recipient_swap scenario sends here, but the kernel
+// always denies that scenario, so no on-chain tx is broadcast.
 export const demoUnknownCounterparty = "0x4a8b1c2d3e4f5061728394a5b6c7d8e9f0011223";
+// Synthetic — the "claimed new wallet" scenario sends here AFTER
+// passkey verification. Kept distinct from demoKnownCounterparty so
+// the kernel detects it as a new route for a known identity (the
+// signal that triggers step_up). Tokens broadcast here are unrecoverable
+// (no one has the private key), but each demo run only burns 20 USDC
+// of testnet mockUSDC — acceptable for the live-demo wow.
 export const demoClaimedNewRoute = "0x7d31c4b5a697887766554433221100ffeeddccbb";
 
 export const demoProfile: UserTrustProfile = {
