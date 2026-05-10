@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { ActivityPanel } from "@/components/activity-panel";
+import { AutoPasskeyTrigger } from "@/components/auto-passkey-trigger";
 import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
@@ -173,6 +174,7 @@ export function HomeShell({ username }: HomeShellProps) {
 
       {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
       <VoiceSession />
+      <AutoPasskeyTrigger />
     </main>
   );
 }
