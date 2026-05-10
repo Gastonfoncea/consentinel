@@ -10,10 +10,11 @@ import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 //
 // The voice is purely narration. The actual consent moment is the user
 // tapping "Aceptar" in StepUpVerificationCard — that runs the WebAuthn
-// passkey ceremony explicitly. If the browser blocks autoplay (iOS Safari
-// after a navigation, etc.), the voice is silently skipped — no fallback
-// button, no "tap to listen". The card with Aceptar/Rechazar is always
-// visible, so the user can approve regardless of whether the audio plays.
+// passkey ceremony explicitly. If the browser blocks autoplay (deeplink
+// navigation gives no user gesture in the destination tab), we don't
+// give up — we wait for the first pointerdown/keydown anywhere on the
+// page and play then. The card with Aceptar/Rechazar is always visible,
+// so the user can still approve without ever hearing Melisa.
 //
 // Two trigger paths:
 //   1. `bootstrapChallenge` prop — set by HomeShell when the dashboard
@@ -50,7 +51,9 @@ export function VoiceSession({
   // Visual badge state — surfaces "Melisa hablando" while audio plays so
   // the blob isn't the only signal during the ~1-2s gap between trigger
   // and first audible word.
-  const [phase, setPhase] = useState<"idle" | "loading" | "playing">("idle");
+  const [phase, setPhase] = useState<
+    "idle" | "loading" | "awaiting-gesture" | "playing"
+  >("idle");
 
   // Bootstrap path: dashboard hydrated from deeplink.
   useEffect(() => {
@@ -103,7 +106,13 @@ export function VoiceSession({
   }, [events]);
 
   // Cleanup on unmount — kill any in-flight audio so HMR / route changes
-  // don't leave Melisa speaking into the void.
+  // don't leave Melisa speaking into the void. Also clear the dedup ref:
+  // React 18 Strict Mode (next.config.js) double-mounts in dev, so on the
+  // first "fake" unmount the audio gets torn down here; if we leave the
+  // dedup ref pointing at the current challengeId the remount's bootstrap
+  // effect early-returns and Melisa never speaks. Clearing it lets the
+  // remount retry. Same applies to a real route navigation back to the
+  // dashboard with the same ?challenge=.
   useEffect(() => {
     return () => {
       const a = audioRef.current;
@@ -111,12 +120,19 @@ export function VoiceSession({
         a.pause();
         a.src = "";
       }
+      audioRef.current = null;
+      startedChallengeRef.current = null;
     };
   }, []);
 
   if (phase === "idle") return null;
 
-  const label = phase === "loading" ? "preparando voz" : "Melisa hablando";
+  const label =
+    phase === "loading"
+      ? "preparando voz"
+      : phase === "awaiting-gesture"
+        ? "tocá para escuchar a Melisa"
+        : "Melisa hablando";
 
   return (
     <div className="pointer-events-none fixed left-1/2 top-4 z-50 -translate-x-1/2">
@@ -138,7 +154,9 @@ export function VoiceSession({
 async function runNarration(
   challengeId: string,
   audience: "dashboard" | "whatsapp",
-  setPhase: (p: "idle" | "loading" | "playing") => void,
+  setPhase: (
+    p: "idle" | "loading" | "awaiting-gesture" | "playing"
+  ) => void,
   audioRef: React.MutableRefObject<HTMLAudioElement | null>,
   onSpeakingChangeRef: React.MutableRefObject<((isSpeaking: boolean) => void) | undefined>
 ): Promise<void> {
@@ -169,19 +187,53 @@ async function runNarration(
   });
 
   try {
-    setPhase("playing");
-    onSpeakingChangeRef.current?.(true);
-    await audio.play();
+    try {
+      setPhase("playing");
+      onSpeakingChangeRef.current?.(true);
+      await audio.play();
+    } catch (autoplayErr) {
+      // Most common case in prod: deeplink navigation = no user gesture
+      // in this tab, so the browser rejects .play() with NotAllowedError.
+      // Park the audio and arm one-shot listeners — the very first tap or
+      // keypress anywhere will release it.
+      console.warn("[voice-session] autoplay blocked, awaiting first gesture", autoplayErr);
+      onSpeakingChangeRef.current?.(false);
+      setPhase("awaiting-gesture");
+      await waitForUserGestureAndPlay(audio);
+      onSpeakingChangeRef.current?.(true);
+      setPhase("playing");
+    }
     await playbackDone;
   } catch (err) {
-    // Browser autoplay policy can reject .play() if there was no recent
-    // user gesture. We swallow the error — the StepUpVerificationCard's
-    // Aceptar/Rechazar buttons are still visible and fully functional,
-    // so the user can approve without ever hearing Melisa. Voice is a
-    // bonus, not a gate.
     console.warn("[voice-session] audio playback skipped", err);
   } finally {
     onSpeakingChangeRef.current?.(false);
     setPhase("idle");
   }
+}
+
+// Resolves on the first pointerdown / keydown / touchstart on the window,
+// at which point the gesture token lets us call .play() successfully.
+// Rejects if the audio element is torn down (HMR / unmount sets src="" →
+// "emptied") so the outer try doesn't hang forever.
+function waitForUserGestureAndPlay(audio: HTMLAudioElement): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const events = ["pointerdown", "keydown", "touchstart"] as const;
+    const cleanup = () => {
+      events.forEach((e) => window.removeEventListener(e, onGesture, true));
+      audio.removeEventListener("emptied", onAborted);
+    };
+    const onGesture = () => {
+      cleanup();
+      audio.play().then(resolve, reject);
+    };
+    const onAborted = () => {
+      cleanup();
+      reject(new Error("audio aborted before user gesture"));
+    };
+    events.forEach((e) =>
+      window.addEventListener(e, onGesture, { once: true, capture: true })
+    );
+    audio.addEventListener("emptied", onAborted, { once: true });
+  });
 }
