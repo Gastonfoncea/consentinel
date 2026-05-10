@@ -90,10 +90,17 @@ interface UseBlobStateOptions {
   // for this client is empty (cold connect). Seed the blob into "verifying"
   // immediately so it doesn't sit "idle" while VoiceSession wakes Melisa.
   bootstrapChallenge?: StepUpChallengeView;
+  // True while Melisa is actively speaking the TTS audio. Drives a
+  // continuous pulse rhythm so the blob's surface ripples in time with
+  // the voice — visual cue that the voice is coming THROUGH the blob,
+  // not floating somewhere else on the page.
+  isSpeaking?: boolean;
 }
 
+const SPEAKING_PULSE_MS = 280;
+
 export function useBlobState(options: UseBlobStateOptions = {}): BlobSignal {
-  const { bootstrapChallenge } = options;
+  const { bootstrapChallenge, isSpeaking = false } = options;
   const { events } = useEventStream();
   // Seed: terminal challenges (completed/rejected/expired) don't override
   // idle — the user already finished or it's stale. Active challenges
@@ -205,6 +212,19 @@ export function useBlobState(options: UseBlobStateOptions = {}): BlobSignal {
     }, remaining);
     return () => clearTimeout(t);
   }, [state]);
+
+  // While Melisa speaks, bump pulseSeed at a steady cadence so the blob's
+  // surface ripples like waves of speech. The blob's existing pulse code
+  // turns each seed bump into a transient displacement spike; chaining
+  // them every ~280ms reads as continuous motion. Stops the moment
+  // VoiceSession reports playback ended, no audio analysis required.
+  useEffect(() => {
+    if (!isSpeaking) return;
+    const interval = setInterval(() => {
+      setPulseSeed((s) => s + 1);
+    }, SPEAKING_PULSE_MS);
+    return () => clearInterval(interval);
+  }, [isSpeaking]);
 
   // Auto-decay terminal states (allow / deny) → idle. Depends only on
   // `state` (not `events`), so a flurry of events that all map to the
