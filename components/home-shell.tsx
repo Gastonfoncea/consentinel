@@ -40,6 +40,9 @@ export function HomeShell({ username }: HomeShellProps) {
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
 
   // TEMP: opt-in scenario launcher on prod via ?dev=1 in the URL.
+  // Persists to localStorage so the flag survives the auth redirect
+  // (middleware sends unauth'd /dashboard hits to /login, then the login
+  // form redirects back; localStorage outlives that round-trip).
   // Remove this state + effect and restore the inline NODE_ENV check below
   // after the demo.
   const [devLauncherOn, setDevLauncherOn] = useState(
@@ -47,7 +50,22 @@ export function HomeShell({ username }: HomeShellProps) {
   );
   useEffect(() => {
     if (process.env.NODE_ENV === "development") return;
-    if (new URLSearchParams(window.location.search).get("dev") === "1") {
+    const fromUrl =
+      new URLSearchParams(window.location.search).get("dev") === "1";
+    if (fromUrl) {
+      try {
+        localStorage.setItem("consentinel:dev", "1");
+      } catch {
+        /* private mode / disabled storage — ignore */
+      }
+    }
+    let fromStorage = false;
+    try {
+      fromStorage = localStorage.getItem("consentinel:dev") === "1";
+    } catch {
+      /* ignore */
+    }
+    if (fromUrl || fromStorage) {
       setDevLauncherOn(true);
     }
   }, []);

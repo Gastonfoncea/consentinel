@@ -40,8 +40,10 @@ export async function middleware(request: NextRequest) {
 
   if (!session.userId) {
     const url = request.nextUrl.clone();
+    const originalTarget = pathname + (request.nextUrl.search || "");
     url.pathname = "/login";
     url.search = "";
+    url.searchParams.set("redirectTo", originalTarget);
     return NextResponse.redirect(url);
   }
 
