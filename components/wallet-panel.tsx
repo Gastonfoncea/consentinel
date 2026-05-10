@@ -88,30 +88,32 @@ export function WalletPanel() {
         </p>
       )}
 
-      <div className="mt-5 flex-1 overflow-y-auto">
+      <div className="mt-5">
         <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-muted">
           recent transactions
         </p>
-        {state?.configured && state.txs.length > 0 ? (
-          <ul className="flex flex-col gap-1.5">
-            <AnimatePresence initial={false}>
-              {state.txs.map((tx) => (
-                <motion.li
-                  key={tx.hash}
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.2, ease: "easeOut" }}
-                >
-                  <TxRow tx={tx} />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ul>
-        ) : state?.configured ? (
-          <p className="font-mono text-xs text-muted">no recent activity</p>
-        ) : (
-          <p className="font-mono text-xs text-muted">—</p>
-        )}
+        <div className="max-h-28 overflow-y-auto pr-1">
+          {state?.configured && state.txs.length > 0 ? (
+            <ul className="flex flex-col gap-1.5">
+              <AnimatePresence initial={false}>
+                {state.txs.map((tx) => (
+                  <motion.li
+                    key={tx.hash}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                  >
+                    <TxRow tx={tx} />
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
+          ) : state?.configured ? (
+            <p className="font-mono text-xs text-muted">no recent activity</p>
+          ) : (
+            <p className="font-mono text-xs text-muted">—</p>
+          )}
+        </div>
       </div>
     </div>
   );

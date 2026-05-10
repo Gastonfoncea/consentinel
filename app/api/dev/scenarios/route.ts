@@ -31,8 +31,20 @@ function randomEvmAddress(): Address {
 }
 
 export async function POST(req: Request) {
+  // TEMP: prod opt-in via ?dev=1 on the calling page URL (forwarded as referer
+  // by the launcher's fetch). Remove this whole block + restore the original
+  // `if (NODE_ENV === "production") return 404` after the demo.
   if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+    const referer = req.headers.get("referer") ?? "";
+    let optedIn = false;
+    try {
+      optedIn = new URL(referer).searchParams.get("dev") === "1";
+    } catch {
+      /* no/invalid referer */
+    }
+    if (!optedIn) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
   }
 
   const body = (await req.json().catch(() => ({}))) as { scenario?: string };
