@@ -44,6 +44,22 @@ export type KernelStreamEvent =
       expiresAt: string;
     }
   | {
+      type: "step_up.phone_confirmed";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: "voice_biometric_callback" | "passkey";
+      provider: "elevenlabs" | "manual";
+    }
+  | {
+      type: "step_up.rejected";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: "voice_biometric_callback" | "passkey";
+      reason: "user_denied" | "duress";
+    }
+  | {
       type: "step_up.verified";
       ts: number;
       requestId: string;
@@ -85,6 +101,16 @@ export type KernelStreamEvent =
       ts: number;
       requestId?: string;
       message: string;
+    }
+  | {
+      // ElevenLabs SDK conversation transcript (user speaking / agent
+      // speaking) — published from the browser via /api/voice/transcript
+      // so the activity panel + log panel can render the live dialog.
+      type: "voice.message";
+      ts: number;
+      requestId: string;
+      role: "user" | "agent";
+      text: string;
     }
   | {
       type: "ping";

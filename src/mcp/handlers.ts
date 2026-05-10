@@ -29,6 +29,22 @@ export async function createStepUpChallengeResponse(runtime: KernelRuntime, requ
   return runtime.createStandaloneStepUpChallenge(request);
 }
 
+export async function getStepUpChallenge(runtime: KernelRuntime, challengeId: string) {
+  return runtime.getPendingStepUp(challengeId);
+}
+
+export async function confirmPhoneStepUp(
+  runtime: KernelRuntime,
+  challengeId: string,
+  provider: "elevenlabs" | "manual" = "manual"
+) {
+  return runtime.confirmPhoneStepUp(challengeId, provider);
+}
+
+export async function rejectStepUp(runtime: KernelRuntime, challengeId: string, reason: "user_denied" | "duress") {
+  return runtime.rejectStepUp(challengeId, reason);
+}
+
 export async function prepareWalletTransfer(runtime: KernelRuntime, request: AgentActionRequest, now = new Date()) {
   return runtime.prepareWalletTransfer(request, now);
 }

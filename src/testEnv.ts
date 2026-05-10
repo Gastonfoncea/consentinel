@@ -1,0 +1,12 @@
+const TEST_PRIVATE_KEY = "0x1111111111111111111111111111111111111111111111111111111111111111";
+const TEST_USDC_CONTRACT = "0x2222222222222222222222222222222222222222";
+
+export function ensureWalletTestEnv() {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(process.env.WALLET_PRIVATE_KEY || "")) {
+    process.env.WALLET_PRIVATE_KEY = TEST_PRIVATE_KEY;
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(process.env.USDC_CONTRACT || "")) {
+    process.env.USDC_CONTRACT = TEST_USDC_CONTRACT;
+  }
+}

@@ -2,6 +2,7 @@ import type {
   AgentActionRequest,
   ConsentinelEvent,
   PermissionDecision,
+  StepUpRejectionReason,
   StepUpChallenge,
   TrackRecordEvent
 } from "../domain/types";
@@ -25,7 +26,14 @@ export type PendingOperation =
       request: AgentActionRequest;
     };
 
-export type PendingStepUpStatus = "pending" | "verified" | "completed" | "expired" | "canceled";
+export type PendingStepUpStatus =
+  | "pending"
+  | "phone_confirmed"
+  | "verified"
+  | "completed"
+  | "expired"
+  | "rejected"
+  | "canceled";
 
 export interface PendingStepUp extends StepUpChallenge {
   createdAt: string;
@@ -33,11 +41,15 @@ export interface PendingStepUp extends StepUpChallenge {
   decision: PermissionDecision;
   operation: PendingOperation;
   status: PendingStepUpStatus;
+  phoneConfirmedAt?: string;
+  phoneConfirmationProvider?: "elevenlabs" | "manual";
   authChallenge?: string;
   challengeOwnerUsername?: string;
   verifiedAt?: string;
   verifiedByUsername?: string;
   completedAt?: string;
+  rejectedAt?: string;
+  rejectedReason?: StepUpRejectionReason;
   canceledAt?: string;
   canceledByUsername?: string;
 }
@@ -82,6 +94,24 @@ export type DurableRuntimeEvent =
         amount: number;
         asset: string;
       };
+    }
+  | {
+      id: string;
+      kind: "step_up_phone_confirmed";
+      recordedAt: string;
+      challengeId: string;
+      requestId: string;
+      actionHash: string;
+      provider: "elevenlabs" | "manual";
+    }
+  | {
+      id: string;
+      kind: "step_up_rejected";
+      recordedAt: string;
+      challengeId: string;
+      requestId: string;
+      actionHash: string;
+      reason: StepUpRejectionReason;
     }
   | {
       id: string;
@@ -139,6 +169,22 @@ export type RuntimePermissionEvent =
       expiresAt: string;
     }
   | {
+      type: "step_up.phone_confirmed";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: StepUpChallenge["channel"];
+      provider: "elevenlabs" | "manual";
+    }
+  | {
+      type: "step_up.rejected";
+      ts: number;
+      requestId: string;
+      challengeId: string;
+      channel: StepUpChallenge["channel"];
+      reason: StepUpRejectionReason;
+    }
+  | {
       type: "step_up.verified";
       ts: number;
       requestId: string;
@@ -180,6 +226,17 @@ export type RuntimePermissionEvent =
       ts: number;
       requestId?: string;
       message: string;
+    }
+  | {
+      // ElevenLabs SDK transcript line, pushed from the browser via
+      // /api/voice/transcript. Doesn't change kernel state — just lets
+      // the activity feed render the live conversation alongside the
+      // permission events.
+      type: "voice.message";
+      ts: number;
+      requestId: string;
+      role: "user" | "agent";
+      text: string;
     }
   | {
       type: "ping";

@@ -4,7 +4,7 @@ import { demoProfile, seedEvents } from "../demoFixtures";
 import type {
   AgentActionRequest,
   PermissionDecision,
-  StepUpChallenge,
+  StepUpRejectionReason,
   TrackRecordEvent,
   UserTrustProfile
 } from "../domain/types";
@@ -29,6 +29,7 @@ import {
   getWalletAddress,
   prepareUsdcTransfer
 } from "../wallet/wallet";
+import { normalizeUsername } from "../stepup/presentation";
 
 interface KernelRuntimeOptions {
   durableEvents?: DurableEventRepository;
@@ -341,24 +342,24 @@ export class KernelRuntime {
   async beginPasskeyStepUp(challengeId: string, username: string, authChallenge: string) {
     await this.ensureInitialized();
     const pending = await this.requirePendingStepUp(challengeId);
-    if (pending.status !== "pending") {
+    this.assertStepUpStillActive(pending, challengeId);
+
+    if (pending.channel === "voice_biometric_callback") {
+      if (pending.status !== "phone_confirmed") {
+        throw new Error(`Step-up ${challengeId} still needs verbal confirmation before biometric validation can begin.`);
+      }
+    } else if (pending.status !== "pending") {
       throw new Error(`Step-up ${challengeId} is ${pending.status}, not pending.`);
     }
 
-    if (new Date(pending.expiresAt).getTime() <= this.clock().getTime()) {
-      const expired = { ...pending, status: "expired" as const };
-      await this.pendingStepUps.upsert(expired);
-      throw new Error(`Step-up ${challengeId} has expired.`);
-    }
-
-    if (pending.channel !== "passkey") {
-      throw new Error(`Step-up ${challengeId} is bound to ${pending.channel}, not passkey.`);
+    if (!this.matchesVerificationUsername(username, pending.verificationUsername)) {
+      throw new Error(`Step-up ${challengeId} is reserved for another user.`);
     }
 
     const updated: PendingStepUp = {
       ...pending,
       authChallenge,
-      challengeOwnerUsername: username
+      challengeOwnerUsername: pending.verificationUsername
     };
     await this.pendingStepUps.upsert(updated);
     return updated;
@@ -369,6 +370,135 @@ export class KernelRuntime {
     return this.pendingStepUps.get(challengeId);
   }
 
+  async getPendingStepUpByHandoffCode(handoffCode: string) {
+    await this.ensureInitialized();
+    return this.pendingStepUps.getByHandoffCode(handoffCode);
+  }
+
+  async confirmPhoneStepUp(
+    challengeId: string,
+    provider: "elevenlabs" | "manual" = "manual",
+    now = this.clock()
+  ) {
+    await this.ensureInitialized();
+    const pending = await this.requirePendingStepUp(challengeId);
+
+    if (pending.channel !== "voice_biometric_callback") {
+      throw new Error(`Step-up ${challengeId} is bound to ${pending.channel}, not voice callback.`);
+    }
+
+    if (pending.status === "phone_confirmed" || pending.status === "verified" || pending.status === "completed") {
+      return {
+        ok: true as const,
+        status: pending.status,
+        challengeId,
+        stepUp: pending,
+        next: {
+          action: "open_whatsapp_verification_link" as const,
+          message: "Abrí el WhatsApp enviado y terminá la verificación con passkey."
+        }
+      };
+    }
+
+    this.assertStepUpStillActive(pending, challengeId);
+
+    if (pending.status !== "pending") {
+      throw new Error(`Step-up ${challengeId} is ${pending.status}, not pending.`);
+    }
+
+    const updated: PendingStepUp = {
+      ...pending,
+      status: "phone_confirmed",
+      phoneConfirmedAt: now.toISOString(),
+      phoneConfirmationProvider: provider
+    };
+    await this.pendingStepUps.upsert(updated);
+
+    await this.appendDurableEvent({
+      id: durableId("stepup_phone_confirmed", challengeId),
+      kind: "step_up_phone_confirmed",
+      recordedAt: now.toISOString(),
+      challengeId,
+      requestId: pending.request.requestId,
+      actionHash: pending.decision.actionHash,
+      provider
+    });
+
+    this.emit({
+      type: "step_up.phone_confirmed",
+      ts: now.getTime(),
+      requestId: pending.request.requestId,
+      challengeId,
+      channel: pending.channel,
+      provider
+    });
+
+    return {
+      ok: true as const,
+      status: "phone_confirmed" as const,
+      challengeId,
+      stepUp: updated,
+      next: {
+        action: "open_whatsapp_verification_link" as const,
+        message: "Abrí el WhatsApp enviado y terminá la verificación con passkey."
+      }
+    };
+  }
+
+  async rejectStepUp(challengeId: string, reason: StepUpRejectionReason, now = this.clock()) {
+    await this.ensureInitialized();
+    const pending = await this.requirePendingStepUp(challengeId);
+
+    if (pending.status === "rejected") {
+      return {
+        ok: true as const,
+        status: "rejected" as const,
+        challengeId,
+        reason: pending.rejectedReason ?? reason
+      };
+    }
+
+    this.assertStepUpStillActive(pending, challengeId);
+
+    if (pending.status !== "pending" && pending.status !== "phone_confirmed") {
+      throw new Error(`Step-up ${challengeId} is ${pending.status}, and can no longer be rejected.`);
+    }
+
+    const updated: PendingStepUp = {
+      ...pending,
+      status: "rejected",
+      rejectedAt: now.toISOString(),
+      rejectedReason: reason
+    };
+    await this.pendingStepUps.upsert(updated);
+
+    await this.appendDurableEvent({
+      id: durableId("stepup_rejected", challengeId),
+      kind: "step_up_rejected",
+      recordedAt: now.toISOString(),
+      challengeId,
+      requestId: pending.request.requestId,
+      actionHash: pending.decision.actionHash,
+      reason
+    });
+
+    this.emit({
+      type: "step_up.rejected",
+      ts: now.getTime(),
+      requestId: pending.request.requestId,
+      challengeId,
+      channel: pending.channel,
+      reason
+    });
+
+    return {
+      ok: true as const,
+      status: "rejected" as const,
+      challengeId,
+      reason
+    };
+  }
+
   async completeVerifiedStepUp(
     challengeId: string,
     username: string,
@@ -376,12 +506,25 @@ export class KernelRuntime {
   ) {
     await this.ensureInitialized();
     const pending = await this.requirePendingStepUp(challengeId);
-    if (pending.status !== "pending") {
+    this.assertStepUpStillActive(pending, challengeId);
+
+    if (pending.channel === "voice_biometric_callback") {
+      if (pending.status !== "phone_confirmed") {
+        throw new Error(`Step-up ${challengeId} still needs verbal confirmation before biometric verification can complete.`);
+      }
+    } else if (pending.status !== "pending") {
       throw new Error(`Step-up ${challengeId} is ${pending.status}, not pending.`);
     }
 
-    if (pending.challengeOwnerUsername && pending.challengeOwnerUsername !== username) {
+    if (
+      pending.challengeOwnerUsername &&
+      !this.matchesVerificationUsername(username, pending.challengeOwnerUsername)
+    ) {
       throw new Error(`Step-up ${challengeId} is owned by another user.`);
+    }
+
+    if (!this.matchesVerificationUsername(username, pending.verificationUsername)) {
+      throw new Error(`Step-up ${challengeId} is reserved for another user.`);
     }
 
     const verifiedTrackEvent = this.buildTrackRecordEvent(pending.request, now.toISOString(), "passkey");
@@ -614,7 +757,10 @@ export class KernelRuntime {
     const now = this.clock().getTime();
     const pending = await this.pendingStepUps.list();
     for (const stepUp of pending) {
-      if (stepUp.status === "pending" && new Date(stepUp.expiresAt).getTime() <= now) {
+      if (
+        (stepUp.status === "pending" || stepUp.status === "phone_confirmed") &&
+        new Date(stepUp.expiresAt).getTime() <= now
+      ) {
         await this.pendingStepUps.upsert({
           ...stepUp,
           status: "expired"
@@ -897,7 +1043,12 @@ export class KernelRuntime {
     }
   }
 
-  private emit(event: RuntimePermissionEvent) {
+  /**
+   * Emit a runtime event onto the bus. Public so external surfaces (e.g.
+   * /api/voice/transcript) can stream non-kernel events through the same
+   * SSE feed the UI consumes — they don't affect kernel state, just UX.
+   */
+  emit(event: RuntimePermissionEvent) {
     this.eventBus.emit(event);
   }
 
@@ -908,6 +1059,30 @@ export class KernelRuntime {
     }
 
     return pending;
+  }
+
+  private assertStepUpStillActive(pending: PendingStepUp, challengeId: string) {
+    if (pending.status === "expired") {
+      throw new Error(`Step-up ${challengeId} has expired.`);
+    }
+
+    if (pending.status === "rejected") {
+      throw new Error(`Step-up ${challengeId} was rejected.`);
+    }
+
+    if (pending.status === "completed") {
+      throw new Error(`Step-up ${challengeId} is already completed.`);
+    }
+
+    if (new Date(pending.expiresAt).getTime() <= this.clock().getTime()) {
+      const expired = { ...pending, status: "expired" as const };
+      void this.pendingStepUps.upsert(expired);
+      throw new Error(`Step-up ${challengeId} has expired.`);
+    }
+  }
+
+  private matchesVerificationUsername(username: string, verificationUsername: string) {
+    return normalizeUsername(username) === normalizeUsername(verificationUsername);
   }
 }
 

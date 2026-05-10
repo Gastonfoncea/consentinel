@@ -16,6 +16,8 @@
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@elevenlabs/client": "^1.7.0",
+    "@elevenlabs/react": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
