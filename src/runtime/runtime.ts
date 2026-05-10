@@ -27,7 +27,8 @@ import {
   getUsdcAddress,
   getUsdcBalance,
   getWalletAddress,
-  prepareUsdcTransfer
+  prepareUsdcTransfer,
+  transferUsdc
 } from "../wallet/wallet";
 import { normalizeUsername } from "../stepup/presentation";
 
@@ -288,15 +289,40 @@ export class KernelRuntime {
       await this.recordTrackEvent(executionTrackEvent, "runtime");
     }
 
+    // Real on-chain transfer on Base Sepolia. transferUsdc submits via
+    // viem's writeContract — the call resolves with the tx hash as soon
+    // as the RPC accepts the tx (~500ms), without waiting for inclusion.
+    // BaseScan starts showing the tx within ~3s. If the chain RPC is
+    // unreachable or the wallet has no gas / no USDC, we fall back to
+    // a deterministic mock hash so the demo doesn't dead-end on a
+    // network blip.
+    let txHash: string;
+    let realChain = false;
+    try {
+      const onchainHash = await transferUsdc(
+        preparation.to as Address,
+        String(request.amount?.value ?? 0)
+      );
+      txHash = onchainHash;
+      realChain = true;
+    } catch (err) {
+      console.warn(
+        "[runtime] on-chain transfer failed, falling back to mock hash",
+        err instanceof Error ? err.message : err
+      );
+      txHash = `0x${prepared.decision.actionHash}`;
+    }
+
     const execution = {
-      mode: "mock" as const,
+      mode: realChain ? ("onchain" as const) : ("mock" as const),
       eventId: executionTrackEvent.eventId,
-      hash: `0x${prepared.decision.actionHash}`,
+      hash: txHash,
       from: preparation.from,
       to: preparation.to,
       amount: request.amount?.value ?? 0,
       asset: request.amount?.currency ?? "USDC",
-      transaction: preparation.transaction
+      transaction: preparation.transaction,
+      explorerUrl: realChain ? basescanTxUrl(txHash as `0x${string}`) : null
     };
 
     await this.appendDurableEvent({
@@ -983,15 +1009,36 @@ export class KernelRuntime {
     const preparation = this.prepareTransferPayload(pending.request);
     await this.persistPreparation(pending.request, pending.decision, preparation, "resumed");
 
+    // Same real-on-chain path as the autonomous-allow flow. After the
+    // user passkey-verifies, we submit the actual ERC-20 transfer to
+    // Base Sepolia and use the returned hash as the canonical event id.
+    let txHash: string;
+    let realChain = false;
+    try {
+      const onchainHash = await transferUsdc(
+        preparation.to as Address,
+        String(pending.request.amount?.value ?? 0)
+      );
+      txHash = onchainHash;
+      realChain = true;
+    } catch (err) {
+      console.warn(
+        "[runtime] resumed on-chain transfer failed, falling back to mock hash",
+        err instanceof Error ? err.message : err
+      );
+      txHash = `0x${pending.decision.actionHash}`;
+    }
+
     const execution = {
-      mode: "mock" as const,
+      mode: realChain ? ("onchain" as const) : ("mock" as const),
       eventId: `evt_exec_${pending.decision.actionHash.slice(0, 12)}`,
-      hash: `0x${pending.decision.actionHash}`,
+      hash: txHash,
       from: preparation.from,
       to: preparation.to,
       amount: pending.request.amount?.value ?? 0,
       asset: pending.request.amount?.currency ?? "USDC",
-      transaction: preparation.transaction
+      transaction: preparation.transaction,
+      explorerUrl: realChain ? basescanTxUrl(txHash as `0x${string}`) : null
     };
 
     await this.appendDurableEvent({

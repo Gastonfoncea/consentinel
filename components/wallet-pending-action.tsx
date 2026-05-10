@@ -43,11 +43,16 @@ interface ActiveAction {
   summary: string;
   // For deny states, why the kernel/user blocked it.
   reason?: string;
+  // Real Base Sepolia tx hash once the kernel actually broadcasts.
+  // Surfaces as a "ver tx ↗" link to BaseScan in the allow state, so
+  // judges can click out of the demo and verify the on-chain trace.
+  txHash?: string;
 }
 
 type DisplayedAction = { status: "idle" } | ActiveAction;
 
-const TERMINAL_DECAY_MS = 4000;
+const TERMINAL_DECAY_MS = 6000;
+const BASESCAN_TX_URL = "https://sepolia.basescan.org/tx/";
 
 export function WalletPendingAction({ onStepUpClick }: WalletPendingActionProps) {
   const { events } = useEventStream();
@@ -113,15 +118,15 @@ export function WalletPendingAction({ onStepUpClick }: WalletPendingActionProps)
             </p>
           </motion.div>
         ) : (
-          <motion.button
+          <motion.div
             key={displayed.status + displayed.requestId}
-            type="button"
+            role={isStepUp ? "button" : undefined}
+            tabIndex={isStepUp ? 0 : -1}
             onClick={() => {
               if (isStepUp && onStepUpClick) {
                 onStepUpClick(displayed.requestId);
               }
             }}
-            disabled={!isStepUp}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
@@ -160,7 +165,22 @@ export function WalletPendingAction({ onStepUpClick }: WalletPendingActionProps)
                 tap to verify ↗
               </span>
             )}
-          </motion.button>
+            {/* Real on-chain proof link. Only renders when the kernel
+                actually broadcasted to Base Sepolia (mock fallback
+                doesn't include a hash). External link so judges can
+                pop out of the demo and verify the tx. */}
+            {displayed.status === "allow" && displayed.txHash && (
+              <a
+                href={BASESCAN_TX_URL + displayed.txHash}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="mt-auto pt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-allow/80 transition hover:text-allow"
+                onClick={(e) => e.stopPropagation()}
+              >
+                ver tx on-chain ↗ {displayed.txHash.slice(0, 10)}…
+              </a>
+            )}
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
@@ -251,6 +271,7 @@ function deriveAction(events: KernelStreamEvent[]): DisplayedAction {
   let preparedAmount: string | null = null;
   let preparedAsset: string | null = null;
   let preparedTo: string | null = null;
+  let txHash: string | null = null;
 
   for (const e of events) {
     if (!hasMatchingRequestId(e, activeRequestId)) continue;
@@ -274,6 +295,10 @@ function deriveAction(events: KernelStreamEvent[]): DisplayedAction {
         preparedAmount = String(e.amount);
         preparedAsset = e.asset;
         preparedTo = e.to;
+        // Real on-chain hash from Base Sepolia. Used to render a
+        // BaseScan link in the allow card so the demo proves it's
+        // not a mockup.
+        txHash = e.txHash;
         break;
       case "wallet.transfer_prepared":
         preparedAmount = e.amount;
@@ -292,7 +317,12 @@ function deriveAction(events: KernelStreamEvent[]): DisplayedAction {
 
   // Priority: executed > resolved > deny > step_up > allow > pending.
   if (executed) {
-    return { status: "allow", requestId: activeRequestId, summary };
+    return {
+      status: "allow",
+      requestId: activeRequestId,
+      summary,
+      txHash: txHash ?? undefined
+    };
   }
   if (stepUpResolved === "canceled") {
     return {
@@ -303,7 +333,12 @@ function deriveAction(events: KernelStreamEvent[]): DisplayedAction {
     };
   }
   if (stepUpResolved === "verified") {
-    return { status: "allow", requestId: activeRequestId, summary };
+    return {
+      status: "allow",
+      requestId: activeRequestId,
+      summary,
+      txHash: txHash ?? undefined
+    };
   }
   if (outcome === "deny") {
     return {
