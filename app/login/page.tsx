@@ -53,7 +53,7 @@ export default function LoginPage() {
       }
 
       setStatus("success");
-      router.replace("/");
+      router.replace("/dashboard");
       router.refresh();
     } catch (err) {
       setStatus("error");

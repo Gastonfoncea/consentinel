@@ -27,7 +27,7 @@ self.addEventListener("push", (event) => {
     tag: payload.tag || "consentinel-push",
     requireInteraction: true,
     data: {
-      url: payload.url || "/",
+      url: payload.url || "/dashboard",
       requestId: payload.requestId,
     },
   };
@@ -37,7 +37,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/";
+  const targetUrl = (event.notification.data && event.notification.data.url) || "/dashboard";
 
   event.waitUntil(
     self.clients

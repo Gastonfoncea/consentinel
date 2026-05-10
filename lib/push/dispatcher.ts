@@ -96,7 +96,7 @@ export function ensurePushDispatcherRegistered(): void {
       title: "Consentinel · Verificación pendiente",
       body: event.prompt || "Tu asistente necesita tu confirmación.",
       requestId: event.requestId,
-      url: "/",
+      url: "/dashboard",
       tag: event.requestId,
     });
   });
