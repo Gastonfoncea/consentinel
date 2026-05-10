@@ -39,6 +39,19 @@ export function HomeShell({ username }: HomeShellProps) {
   const { state: liveState, pulseSeed } = useBlobState();
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
 
+  // TEMP: opt-in scenario launcher on prod via ?dev=1 in the URL.
+  // Remove this state + effect and restore the inline NODE_ENV check below
+  // after the demo.
+  const [devLauncherOn, setDevLauncherOn] = useState(
+    process.env.NODE_ENV === "development"
+  );
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") return;
+    if (new URLSearchParams(window.location.search).get("dev") === "1") {
+      setDevLauncherOn(true);
+    }
+  }, []);
+
   // Shared handler for both surfaces (in-app toast + OS notification).
   // PLA-38 will swap this for the verification modal trigger.
   const handleStepUpOpen = useCallback((requestId: string) => {
@@ -172,7 +185,7 @@ export function HomeShell({ username }: HomeShellProps) {
 
       <PushToast onOpen={handleStepUpOpen} />
 
-      {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
+      {devLauncherOn && <DevScenarioLauncher />}
       <VoiceSession />
       <AutoPasskeyTrigger />
     </main>
