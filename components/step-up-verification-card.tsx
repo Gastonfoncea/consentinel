@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 import { cn } from "@/lib/utils";
 
@@ -52,18 +53,37 @@ export function StepUpVerificationCard({ initialChallenge }: StepUpVerificationC
     setError(null);
 
     try {
-      const res = await fetch("/api/step-up/passkey/approve", {
+      // Full WebAuthn ceremony on click — the OS biometric dialog (Touch
+      // ID / Face ID / Windows Hello) IS the moment of consent. The card
+      // user sees "tap fingerprint" friction at the exact moment of
+      // approval rather than a silent session-based confirmation.
+      const beginRes = await fetch("/api/step-up/passkey/begin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ challengeId: challenge.challengeId })
       });
+      if (!beginRes.ok) {
+        const err = await beginRes.json().catch(() => ({}));
+        throw new Error(err.error || "no se pudo iniciar la verificacion");
+      }
+      const options = await beginRes.json();
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "no se pudo aprobar el permiso");
+      const assertion = await startAuthentication(options);
+
+      const finishRes = await fetch("/api/step-up/passkey/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: challenge.challengeId,
+          response: assertion
+        })
+      });
+      if (!finishRes.ok) {
+        const err = await finishRes.json().catch(() => ({}));
+        throw new Error(err.error || "la verificacion con passkey fallo");
       }
 
-      const finished = (await res.json()) as {
+      const finished = (await finishRes.json()) as {
         resumed?: { status?: string };
       };
       setResumedStatus(finished.resumed?.status ?? null);
