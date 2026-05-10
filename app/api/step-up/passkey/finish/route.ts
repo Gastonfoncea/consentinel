@@ -4,6 +4,7 @@ import type { AuthenticationResponseJSON } from "@simplewebauthn/types";
 import { RP_ID, getExpectedOrigin } from "@/lib/auth/config";
 import { getSession } from "@/lib/auth/session";
 import { findCredentialById, getUserByUsername, updateCredentialCounter } from "@/lib/auth/store";
+import { viewerOwnsStepUp } from "@/lib/step-up/viewer-auth";
 import { getSharedKernelRuntime } from "@/src/runtime/runtime";
 
 export const runtime = "nodejs";
@@ -33,6 +34,12 @@ export async function POST(req: Request) {
   const pending = await kernelRuntime.getPendingStepUp(body.challengeId);
   if (!pending || (pending.status !== "pending" && pending.status !== "phone_confirmed") || !pending.authChallenge) {
     return NextResponse.json({ error: "no pending step-up challenge" }, { status: 400 });
+  }
+  if (!viewerOwnsStepUp(pending, session.username)) {
+    return NextResponse.json(
+      { error: "this challenge belongs to another user" },
+      { status: 403 }
+    );
   }
 
   const credential = await findCredentialById(user.username, body.response.id);

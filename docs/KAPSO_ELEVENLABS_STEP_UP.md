@@ -10,7 +10,7 @@ El repo de skills de Kapso que pasaste (`.agents/skills/agent-skills-master`) ho
 4. El agente de ElevenLabs llama al usuario y lee la operación concreta que se quiere validar.
 5. Si el usuario confirma verbalmente, ElevenLabs/Kapso llama `POST /api/step-up/voice/confirm`.
 6. El kernel deja el challenge en `phone_confirmed`.
-7. El usuario abre el link de WhatsApp o entra a `/v/:handoffCode` y termina la validación con passkey.
+7. El usuario abre el link de WhatsApp o entra a `/v/:handoffCode` y, ya logueado, puede aceptar o rechazar la operación desde la web.
 8. Si el usuario rechaza o reporta coacción, ElevenLabs/Kapso llama `POST /api/step-up/voice/reject` y el permiso queda bloqueado.
 
 ## Seguridad
@@ -36,6 +36,12 @@ Configuración recomendada en ElevenLabs:
 - `Secret Token`: `MCP_SERVER_TOKEN`
 
 Si `MCP_SERVER_TOKEN` no está definido, el endpoint cae automáticamente en `STEP_UP_SERVICE_TOKEN`.
+
+El endpoint corre en modo stateless:
+
+- `initialize` no devuelve `mcp-session-id`
+- `tools/list` y `tools/call` funcionan en requests independientes
+- no hace falta afinidad de instancia entre llamadas en Vercel
 
 Tools relevantes:
 
@@ -118,6 +124,14 @@ Respuesta:
 
 `reason` puede ser `user_denied` o `duress`.
 
+### 4. Audio TTS para WhatsApp
+
+`GET /api/step-up/voice/tts/:challengeId`
+
+- Público a propósito para que Kapso pueda descargar el audio sin headers custom
+- Requiere `ELEVENLABS_API_KEY`
+- Permite overrides opcionales con `ELEVENLABS_VOICE_ID` y `ELEVENLABS_MODEL_ID`
+
 ## MCP disponible
 
 Las mismas tools siguen disponibles en el MCP local por `stdio` y ahora también en el MCP remoto:
@@ -162,7 +176,9 @@ Reglas:
 
 ## Nota de implementación
 
-La llamada telefónica no marca el challenge como `verified`. Solo lo mueve a `phone_confirmed`. La verificación final sigue ocurriendo en la web por medio del link de WhatsApp o `/v/:handoffCode`, usando los endpoints:
+La llamada telefónica no completa la operación: solo mueve el challenge a `phone_confirmed`. Después, la web puede:
 
-- `POST /api/step-up/passkey/begin`
-- `POST /api/step-up/passkey/finish`
+- `POST /api/step-up/passkey/approve`
+- `POST /api/step-up/passkey/reject`
+
+Los endpoints WebAuthn siguen existiendo (`/api/step-up/passkey/begin` y `/finish`) para los flows que todavía necesiten segunda ceremonia.

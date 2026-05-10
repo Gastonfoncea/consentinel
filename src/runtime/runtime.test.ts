@@ -11,6 +11,13 @@ import { ensureWalletTestEnv } from "../testEnv.js";
 
 ensureWalletTestEnv();
 
+const originalKapsoApiKey = process.env.KAPSO_API_KEY;
+const originalKapsoWorkflowId = process.env.KAPSO_WORKFLOW_ID;
+const originalKapsoApiBaseUrl = process.env.KAPSO_API_BASE_URL;
+const originalDemoPhone = process.env.DEMO_PHONE_E164;
+const originalPreferredStepUp = process.env.PREFERRED_STEP_UP;
+const originalFetch = globalThis.fetch;
+
 const deterministicDrift = {
   async evaluate(input: IntentDriftInput): Promise<IntentDriftResult> {
     return this.evaluateSync(input);
@@ -43,6 +50,40 @@ function makeRuntime(
     intentDriftEvaluator: deterministicDrift,
     clock: () => new Date("2026-05-09T12:00:00.000Z")
   });
+}
+
+function restoreKapsoEnv() {
+  if (originalKapsoApiKey === undefined) {
+    delete process.env.KAPSO_API_KEY;
+  } else {
+    process.env.KAPSO_API_KEY = originalKapsoApiKey;
+  }
+
+  if (originalKapsoWorkflowId === undefined) {
+    delete process.env.KAPSO_WORKFLOW_ID;
+  } else {
+    process.env.KAPSO_WORKFLOW_ID = originalKapsoWorkflowId;
+  }
+
+  if (originalKapsoApiBaseUrl === undefined) {
+    delete process.env.KAPSO_API_BASE_URL;
+  } else {
+    process.env.KAPSO_API_BASE_URL = originalKapsoApiBaseUrl;
+  }
+
+  if (originalDemoPhone === undefined) {
+    delete process.env.DEMO_PHONE_E164;
+  } else {
+    process.env.DEMO_PHONE_E164 = originalDemoPhone;
+  }
+
+  if (originalPreferredStepUp === undefined) {
+    delete process.env.PREFERRED_STEP_UP;
+  } else {
+    process.env.PREFERRED_STEP_UP = originalPreferredStepUp;
+  }
+
+  globalThis.fetch = originalFetch;
 }
 
 test("runtime bootstrap seeds only once even across re-instantiation", async () => {
@@ -273,6 +314,87 @@ test("voice step-up requires phone confirmation before app verification", async 
   assert.equal(completed?.status, "completed");
 
   rmSync(tempDir, { recursive: true, force: true });
+});
+
+test("voice wallet transfer step-up queues a Kapso workflow execution when configured", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "runtime-kapso-stepup-"));
+  try {
+    const runtime = makeRuntime(tempDir, {
+      profileOverride: {
+        preferredStepUp: "voice_biometric_callback"
+      }
+    });
+
+    process.env.KAPSO_API_KEY = "kapso_test_key";
+    process.env.KAPSO_WORKFLOW_ID = "0a40a78b-3678-4cfd-a0b7-d27afe1a4de8";
+    process.env.KAPSO_API_BASE_URL = "https://api.kapso.ai/platform/v1";
+    process.env.DEMO_PHONE_E164 = "+5491111111111";
+
+    let calledUrl = "";
+    let calledBody = "";
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      calledUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      calledBody = String(init?.body ?? "");
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: "kapso-exec-1",
+            tracking_id: "kapso-track-1",
+            workflow_id: process.env.KAPSO_WORKFLOW_ID,
+            message: "Workflow execution initiated"
+          }
+        }),
+        {
+          status: 202,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    }) as typeof fetch;
+
+    const result = await runtime.mockExecuteWalletTransfer(demoRequests[3]!);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "step_up_required");
+    assert.equal(result.challenge?.channel, "voice_biometric_callback");
+    assert.equal(result.kapsoExecution?.status, "queued");
+    assert.equal(result.kapsoExecution?.trackingId, "kapso-track-1");
+    assert.equal(
+      calledUrl,
+      "https://api.kapso.ai/platform/v1/workflows/0a40a78b-3678-4cfd-a0b7-d27afe1a4de8/executions"
+    );
+    assert.match(calledBody, /"challenge_id":"voice_/);
+    assert.match(calledBody, /"phone_number":"\+5491111111111"/);
+    assert.match(calledBody, /"operation_kind":"wallet_mock_execute_transfer"/);
+  } finally {
+    restoreKapsoEnv();
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("voice wallet transfer step-up reports Kapso skip when not configured", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "runtime-kapso-skip-"));
+  try {
+    const runtime = makeRuntime(tempDir, {
+      profileOverride: {
+        preferredStepUp: "voice_biometric_callback"
+      }
+    });
+
+    delete process.env.KAPSO_API_KEY;
+    delete process.env.KAPSO_WORKFLOW_ID;
+    delete process.env.KAPSO_API_BASE_URL;
+
+    const result = await runtime.mockExecuteWalletTransfer(demoRequests[3]!);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "step_up_required");
+    assert.equal(result.kapsoExecution?.status, "skipped");
+    assert.equal(result.kapsoExecution?.reason, "kapso_not_configured");
+  } finally {
+    restoreKapsoEnv();
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("voice step-up is bound to the expected username before passkey can begin", async () => {

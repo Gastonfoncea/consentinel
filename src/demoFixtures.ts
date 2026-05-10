@@ -22,8 +22,9 @@ export const demoProfile: UserTrustProfile = {
   conservatism: "balanced",
   trustedDevice: true,
   maxAutonomousSpend: { value: 75, currency: "USD" },
-  preferredStepUp: "passkey",
-  phoneE164: "+15550101111"
+  preferredStepUp:
+    process.env.PREFERRED_STEP_UP === "voice_biometric_callback" ? "voice_biometric_callback" : "passkey",
+  phoneE164: process.env.DEMO_PHONE_E164 || "+15550101111"
 };
 
 export const seedEvents: TrackRecordEvent[] = [

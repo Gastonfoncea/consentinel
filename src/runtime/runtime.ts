@@ -31,6 +31,7 @@ import {
   transferUsdc
 } from "../wallet/wallet";
 import { normalizeUsername } from "../stepup/presentation";
+import { triggerKapsoWorkflowExecutionForStepUp } from "../kapso/workflows";
 
 interface KernelRuntimeOptions {
   durableEvents?: DurableEventRepository;
@@ -234,6 +235,12 @@ export class KernelRuntime {
         },
         now
       );
+      const kapsoExecution = await triggerKapsoWorkflowExecutionForStepUp({
+        request,
+        decision: evaluation.decision,
+        challenge,
+        operationKind: stepUpOperationKind
+      });
 
       return {
         ok: false,
@@ -243,7 +250,8 @@ export class KernelRuntime {
         decision: evaluation.decision,
         events: evaluation.events,
         challengeId: challenge.challengeId,
-        challenge
+        challenge,
+        kapsoExecution
       };
     }
 

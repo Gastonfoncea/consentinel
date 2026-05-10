@@ -3,6 +3,7 @@ import { generateAuthenticationOptions } from "@simplewebauthn/server";
 import { RP_ID } from "@/lib/auth/config";
 import { getSession } from "@/lib/auth/session";
 import { getUserByUsername } from "@/lib/auth/store";
+import { viewerOwnsStepUp } from "@/lib/step-up/viewer-auth";
 import { getSharedKernelRuntime } from "@/src/runtime/runtime";
 
 export const runtime = "nodejs";
@@ -32,6 +33,12 @@ export async function POST(req: Request) {
     const pending = await kernelRuntime.getPendingStepUp(body.challengeId);
     if (!pending) {
       return NextResponse.json({ error: "unknown step-up challenge" }, { status: 404 });
+    }
+    if (!viewerOwnsStepUp(pending, session.username)) {
+      return NextResponse.json(
+        { error: "this challenge belongs to another user" },
+        { status: 403 }
+      );
     }
 
     const canBeginInApp =

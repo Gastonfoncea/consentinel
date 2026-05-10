@@ -13,6 +13,7 @@
     "demo": "tsx src/demo.ts",
     "demo:cache": "tsx src/intent/warmIntentDriftCache.ts",
     "mcp": "tsx src/mcp/server.ts",
+    "test:mcp-remote": "node --import tsx --test app/api/mcp/route.test.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {

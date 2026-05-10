@@ -52,6 +52,8 @@ function userRedisKey(username: string): string {
   return `consentinel:user:${key(username)}`;
 }
 
+// Keep the current file fallback path so local/dev persistence stays aligned
+// with the rest of the repo's runtime data.
 const STORE_PATH = path.join(
   process.cwd(),
   "data",
@@ -123,6 +125,8 @@ class FileUserBackend implements UserBackend {
         map.set(k, deserializeUser(u));
       }
     } catch (err) {
+      // Corrupt JSON or unreadable file — start empty rather than crash
+      // the process. Worst case the user re-registers their passkey.
       // eslint-disable-next-line no-console
       console.warn(
         "[auth-store] failed to load users.json, starting empty:",

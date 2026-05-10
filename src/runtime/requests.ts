@@ -2,6 +2,18 @@ import type { Address } from "viem";
 import { demoProfile } from "../demoFixtures";
 import type { AgentActionRequest, CounterpartyRouteTrust, PermissionContext } from "../domain/types";
 
+function buildDemoRequestMetadata() {
+  const username = process.env.USERNAME?.trim();
+  if (!username) {
+    return undefined;
+  }
+
+  return {
+    username,
+    userName: username
+  };
+}
+
 export function buildWalletReadRequest(input: {
   requestId?: string;
   agentId?: string;
@@ -24,7 +36,8 @@ export function buildWalletReadRequest(input: {
       source: input.source ?? "direct_user",
       sourceTrust: input.sourceTrust ?? "trusted",
       originalUserRequest: input.originalUserRequest
-    }
+    },
+    metadata: buildDemoRequestMetadata()
   };
 }
 
@@ -67,6 +80,7 @@ export function buildWalletTransferRequest(input: {
       expectedCounterparty: input.expectedCounterparty,
       expectedCounterpartyIdentity: input.expectedCounterpartyIdentity,
       expectedCounterpartyRouteTrust: input.expectedCounterpartyRouteTrust
-    }
+    },
+    metadata: buildDemoRequestMetadata()
   };
 }

@@ -3,6 +3,7 @@ import { getIronSession } from "iron-session";
 import { sessionOptions, type SessionData } from "@/lib/auth/session";
 
 const PUBLIC_PATHS = ["/", "/login", "/manifest.json", "/sw.js"];
+const PUBLIC_PAGE_PREFIXES = ["/v/"];
 // Public API prefixes — none of these require an iron-session cookie.
 // - /api/auth: login + register flows themselves.
 // - /api/mcp: remote MCP endpoint, called by external agent runtimes.
@@ -27,6 +28,9 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PUBLIC_PATHS.includes(pathname)) return NextResponse.next();
+  if (PUBLIC_PAGE_PREFIXES.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
   if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
   }
