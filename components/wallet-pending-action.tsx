@@ -165,19 +165,31 @@ export function WalletPendingAction({ onStepUpClick }: WalletPendingActionProps)
                 tap to verify ↗
               </span>
             )}
-            {/* Real on-chain proof link. Only renders when the kernel
+            {/* Real on-chain proof CTA. Only renders when the kernel
                 actually broadcasted to Base Sepolia (mock fallback
-                doesn't include a hash). External link so judges can
-                pop out of the demo and verify the tx. */}
+                doesn't include a hash). Styled as a full-width pill
+                button so judges can't miss it during the demo —
+                external link to BaseScan with the truncated hash
+                visible right on the button. */}
             {displayed.status === "allow" && displayed.txHash && (
               <a
                 href={BASESCAN_TX_URL + displayed.txHash}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="mt-auto pt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-allow/80 transition hover:text-allow"
                 onClick={(e) => e.stopPropagation()}
+                className="mt-auto flex w-full items-center justify-between gap-2 rounded-md border border-allow/40 bg-allow/10 px-3 py-2 font-mono text-[11px] text-allow shadow-glow-allow/40 transition hover:bg-allow/15"
               >
-                ver tx on-chain ↗ {displayed.txHash.slice(0, 10)}…
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[9px] uppercase tracking-[0.18em] text-allow/70">
+                    on-chain
+                  </span>
+                  <span className="truncate">
+                    {displayed.txHash.slice(0, 10)}…{displayed.txHash.slice(-6)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-[10px] uppercase tracking-[0.18em]">
+                  basescan ↗
+                </span>
               </a>
             )}
           </motion.div>
