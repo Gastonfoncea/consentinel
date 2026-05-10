@@ -5,12 +5,12 @@ import { ActivityPanel } from "@/components/activity-panel";
 import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
-import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { PushToast } from "@/components/push-toast";
 import { UserMenu } from "@/components/user-menu";
 import { VoiceSession } from "@/components/voice-session";
 import { WalletPanel } from "@/components/wallet-panel";
+import { WalletPendingAction } from "@/components/wallet-pending-action";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
 import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
 import { usePushSubscription } from "@/lib/hooks/use-push-subscription";
@@ -145,7 +145,7 @@ export function HomeShell({ username }: HomeShellProps) {
             )}
           </div>
           <div className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2">
-            <PhoneMock />
+            <WalletPendingAction onStepUpClick={handleStepUpOpen} />
             <WalletPanel />
           </div>
           {/* Optional chat slot — kept hidden by default, reveal when ready */}
