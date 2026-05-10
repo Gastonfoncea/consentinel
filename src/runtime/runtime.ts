@@ -210,7 +210,7 @@ export class KernelRuntime {
     request: AgentActionRequest,
     now = this.clock(),
     mode: WalletOperationMode = "direct",
-    stepUpOperationKind: PendingOperation["kind"] = "wallet_prepare_transfer"
+    stepUpOperationKind: "wallet_prepare_transfer" | "wallet_mock_execute_transfer" = "wallet_prepare_transfer"
   ) {
     await this.ensureInitialized();
     const evaluation = await this.evaluate(request);
