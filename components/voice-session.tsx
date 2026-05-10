@@ -1,30 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { startAuthentication } from "@simplewebauthn/browser";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 
 // VoiceSession — narrates the step-up via one-shot TTS audio (the same
 // /api/step-up/voice/tts/:challengeId endpoint Kapso uses for the WhatsApp
-// audio, but with `?audience=dashboard` for shorter wording). When the
-// audio ends, automatically triggers the WebAuthn passkey ceremony.
+// audio, but with `?audience=dashboard` for shorter wording).
 //
-// Why one-shot instead of conversational AI:
-//   - The previous implementation used @elevenlabs/react ConversationProvider
-//     which kept the mic open while Melisa spoke. Background noise would
-//     trip VAD, cut the speech, and (worst case) be picked up as a verbal
-//     "yes" that auto-approved the transfer. Genuine safety bug.
-//   - One-shot TTS plays the full sentence end-to-end, no listening, no
-//     interruption. The fingerprint IS the consent — biometric attestation
-//     replaces the verbal "yes". Any noise during playback is ignored.
+// The voice is purely narration. The actual consent moment is the user
+// tapping "Aceptar" in StepUpVerificationCard — that runs the WebAuthn
+// passkey ceremony explicitly. If the browser blocks autoplay (iOS Safari
+// after a navigation, etc.), the voice is silently skipped — no fallback
+// button, no "tap to listen". The card with Aceptar/Rechazar is always
+// visible, so the user can approve regardless of whether the audio plays.
 //
 // Two trigger paths:
 //   1. `bootstrapChallenge` prop — set by HomeShell when the dashboard
 //      hydrated from a Kapso WhatsApp deeplink. Plays as soon as the
 //      component mounts.
 //   2. SSE `step_up.challenge_created` — from in-page demo scenarios
-//      (DevScenarioLauncher). Same playback, same auto-passkey afterward.
+//      (DevScenarioLauncher). Same playback.
 //
 // Both paths dedup via startedChallengeRef so HMR / SSE reconnect doesn't
 // re-trigger Melisa for a challenge already in flight.
@@ -54,9 +50,7 @@ export function VoiceSession({
   // Visual badge state — surfaces "Melisa hablando" while audio plays so
   // the blob isn't the only signal during the ~1-2s gap between trigger
   // and first audible word.
-  const [phase, setPhase] = useState<"idle" | "loading" | "playing" | "passkey">(
-    "idle"
-  );
+  const [phase, setPhase] = useState<"idle" | "loading" | "playing">("idle");
 
   // Bootstrap path: dashboard hydrated from deeplink.
   useEffect(() => {
@@ -122,12 +116,7 @@ export function VoiceSession({
 
   if (phase === "idle") return null;
 
-  const label =
-    phase === "loading"
-      ? "preparando voz"
-      : phase === "playing"
-      ? "Melisa hablando"
-      : "esperando huella";
+  const label = phase === "loading" ? "preparando voz" : "Melisa hablando";
 
   return (
     <div className="pointer-events-none fixed left-1/2 top-4 z-50 -translate-x-1/2">
@@ -137,9 +126,7 @@ export function VoiceSession({
             "h-1.5 w-1.5 rounded-full " +
             (phase === "playing"
               ? "animate-pulse bg-stepup"
-              : phase === "loading"
-              ? "animate-ping bg-stepup"
-              : "bg-stepup/70")
+              : "animate-ping bg-stepup")
           }
         />
         {label}
@@ -151,15 +138,12 @@ export function VoiceSession({
 async function runNarration(
   challengeId: string,
   audience: "dashboard" | "whatsapp",
-  setPhase: (p: "idle" | "loading" | "playing" | "passkey") => void,
+  setPhase: (p: "idle" | "loading" | "playing") => void,
   audioRef: React.MutableRefObject<HTMLAudioElement | null>,
   onSpeakingChangeRef: React.MutableRefObject<((isSpeaking: boolean) => void) | undefined>
 ): Promise<void> {
   setPhase("loading");
 
-  // Fetch the MP3. The endpoint is public and returns audio/mpeg directly,
-  // so we point an <audio> element at the URL and let the browser stream.
-  // Wrapping in <audio>.play() lets us await onended cleanly.
   const audioUrl = `/api/step-up/voice/tts/${encodeURIComponent(
     challengeId
   )}?audience=${audience}`;
@@ -190,49 +174,14 @@ async function runNarration(
     await audio.play();
     await playbackDone;
   } catch (err) {
-    // Browser autoplay policy can reject .play() if there was no user
-    // gesture in the chain. The challenge persists in Redis; the user
-    // can still tap "Aceptar" in the StepUpVerificationCard manually.
-    console.warn("[voice-session] audio playback rejected", err);
+    // Browser autoplay policy can reject .play() if there was no recent
+    // user gesture. We swallow the error — the StepUpVerificationCard's
+    // Aceptar/Rechazar buttons are still visible and fully functional,
+    // so the user can approve without ever hearing Melisa. Voice is a
+    // bonus, not a gate.
+    console.warn("[voice-session] audio playback skipped", err);
+  } finally {
     onSpeakingChangeRef.current?.(false);
     setPhase("idle");
-    return;
-  }
-
-  onSpeakingChangeRef.current?.(false);
-
-  // Audio finished cleanly → run the passkey ceremony directly. The OS
-  // dialog (Touch ID / Face ID / Windows Hello) shows; on success the
-  // server completes the step-up and resumes the wallet operation.
-  setPhase("passkey");
-  try {
-    await runPasskeyCeremony(challengeId);
-  } catch (err) {
-    console.warn("[voice-session] passkey ceremony failed", err);
-  } finally {
-    setPhase("idle");
-  }
-}
-
-async function runPasskeyCeremony(challengeId: string): Promise<void> {
-  const beginRes = await fetch("/api/step-up/passkey/begin", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ challengeId })
-  });
-  if (!beginRes.ok) {
-    const detail = await beginRes.json().catch(() => ({}));
-    throw new Error(`begin failed: ${detail.error ?? beginRes.status}`);
-  }
-  const options = await beginRes.json();
-  const assertion = await startAuthentication(options);
-  const finishRes = await fetch("/api/step-up/passkey/finish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ challengeId, response: assertion })
-  });
-  if (!finishRes.ok) {
-    const detail = await finishRes.json().catch(() => ({}));
-    throw new Error(`finish failed: ${detail.error ?? finishRes.status}`);
   }
 }
