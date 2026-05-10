@@ -15,10 +15,13 @@ export type TechLineKind =
   | "trace"
   | "decision"
   | "step_up_created"
+  | "step_up_phone_confirmed"
+  | "step_up_rejected"
   | "step_up_verified"
   | "step_up_canceled"
   | "wallet_prepared"
   | "wallet_executed"
+  | "voice_message"
   | "error";
 
 export interface TechnicalLine {
@@ -282,6 +285,18 @@ function translateToTechLine(
         kind: "step_up_created",
         text: `STEP-UP requested via ${e.channel} (id=${e.challengeId.slice(0, 8)}…)`,
       };
+    case "step_up.phone_confirmed":
+      return {
+        ts: e.ts,
+        kind: "step_up_phone_confirmed",
+        text: `STEP-UP phone-confirmed via ${e.channel} (provider=${e.provider})`,
+      };
+    case "step_up.rejected":
+      return {
+        ts: e.ts,
+        kind: "step_up_rejected",
+        text: `STEP-UP rejected via ${e.channel} (reason=${e.reason})`,
+      };
     case "step_up.verified":
       return {
         ts: e.ts,
@@ -318,6 +333,12 @@ function translateToTechLine(
         ts: e.ts,
         kind: "error",
         text: `ERROR: ${e.message}`,
+      };
+    case "voice.message":
+      return {
+        ts: e.ts,
+        kind: "voice_message",
+        text: `VOICE ${e.role}: ${e.text}`,
       };
   }
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getIronSession } from "iron-session";
 import { sessionOptions, type SessionData } from "@/lib/auth/session";
 
-const PUBLIC_PATHS = ["/login", "/manifest.json", "/sw.js"];
+const PUBLIC_PATHS = ["/", "/login", "/manifest.json", "/sw.js"];
 // Public API prefixes — none of these require an iron-session cookie.
 // - /api/auth: login + register flows themselves.
 // - /api/mcp: remote MCP endpoint, called by external agent runtimes.

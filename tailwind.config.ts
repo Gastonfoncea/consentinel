@@ -22,6 +22,10 @@ const config: Config = {
         allow: "#00FF88",
         deny: "#FF3B30",
         stepup: "#3B82F6",
+        // Single accent for the marketing surface (landing). Pulled from
+        // the bubble's idle colorA so chrome and product feel like the
+        // same family without colliding with the kernel state palette.
+        accent: "#67B7D8",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
@@ -31,6 +35,7 @@ const config: Config = {
         "glow-allow": "0 0 16px rgba(0, 255, 136, 0.45)",
         "glow-deny": "0 0 16px rgba(255, 59, 48, 0.45)",
         "glow-stepup": "0 0 16px rgba(59, 130, 246, 0.45)",
+        "glow-accent": "0 0 24px rgba(103, 183, 216, 0.35)",
       },
     },
   },
