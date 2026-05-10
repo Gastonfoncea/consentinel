@@ -14,7 +14,12 @@ const kernelRuntime = getSharedKernelRuntime();
 // merely re-states the action phrase that Kapso already has via
 // /api/step-up/voice/:challengeId. Public access lets Kapso "Send Audio"
 // fetch the URL without needing custom headers.
-export async function GET(_req: Request, context: { params: { challengeId: string } }) {
+//
+// `?audience` selects the wording. Default ("whatsapp") is the first-touch
+// message Kapso plays on WhatsApp. "dashboard" is the second-touch line
+// played on the web after the user clicks the deeplink — shorter, no
+// re-introduction, walks straight into "use your passkey now".
+export async function GET(req: Request, context: { params: { challengeId: string } }) {
   const challengeId = context.params.challengeId;
   const pending = await kernelRuntime.getPendingStepUp(challengeId);
   if (!pending) {
@@ -28,8 +33,16 @@ export async function GET(_req: Request, context: { params: { challengeId: strin
   const voiceId = process.env.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
   const modelId = process.env.ELEVENLABS_MODEL_ID || DEFAULT_MODEL_ID;
 
+  const url = new URL(req.url);
+  const audience = url.searchParams.get("audience") === "dashboard" ? "dashboard" : "whatsapp";
   const userName = pending.userDisplayName ?? pending.verificationUsername ?? "che";
-  const text = `Hola ${userName}. Soy el verificador de Consentinel. Tu agente quiere ${pending.actionPhrase}. Te mande un WhatsApp con el link para autorizar con passkey. Si no fuiste vos, ignoralo.`;
+
+  // Avoid security/verifier framing — it reads alarmist and primes the
+  // listener for a scam call. Stay neutral: brand + intent + action.
+  const text =
+    audience === "dashboard"
+      ? `Hola ${userName}. Tu agente quiere ${pending.actionPhrase}. Si lo autorizás, usá tu huella ahora.`
+      : `Hola ${userName}. Tu agente quiere ${pending.actionPhrase}. Te mandamos un link para autorizarlo con tu huella. Si no fuiste vos, ignoralo.`;
 
   const elevenRes = await fetch(`${ELEVENLABS_TTS_URL}/${voiceId}`, {
     method: "POST",

@@ -1,271 +1,143 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import {
-  ConversationProvider,
-  useConversation
-} from "@elevenlabs/react";
+import { useEffect, useRef, useState } from "react";
+import { startAuthentication } from "@simplewebauthn/browser";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
-import type { KernelStreamEvent } from "@/lib/events/types";
 import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 
-// VoiceSession — invisible glue between the kernel runtime's SSE feed and
-// the @elevenlabs/react browser SDK. When the kernel emits a
-// step_up.challenge_created with the voice channel, we fetch a signed
-// websocket URL from /api/elevenlabs/signed-url, start a session with the
-// challenge data as dynamic variables, and let the agent speak through the
-// laptop speakers. We listen for transcripts and forward them to
-// /api/voice/transcript so the activity feed can render the dialog.
+// VoiceSession — narrates the step-up via one-shot TTS audio (the same
+// /api/step-up/voice/tts/:challengeId endpoint Kapso uses for the WhatsApp
+// audio, but with `?audience=dashboard` for shorter wording). When the
+// audio ends, automatically triggers the WebAuthn passkey ceremony.
 //
-// This component renders nothing — it just owns the SDK lifecycle.
+// Why one-shot instead of conversational AI:
+//   - The previous implementation used @elevenlabs/react ConversationProvider
+//     which kept the mic open while Melisa spoke. Background noise would
+//     trip VAD, cut the speech, and (worst case) be picked up as a verbal
+//     "yes" that auto-approved the transfer. Genuine safety bug.
+//   - One-shot TTS plays the full sentence end-to-end, no listening, no
+//     interruption. The fingerprint IS the consent — biometric attestation
+//     replaces the verbal "yes". Any noise during playback is ignored.
+//
+// Two trigger paths:
+//   1. `bootstrapChallenge` prop — set by HomeShell when the dashboard
+//      hydrated from a Kapso WhatsApp deeplink. Plays as soon as the
+//      component mounts.
+//   2. SSE `step_up.challenge_created` — from in-page demo scenarios
+//      (DevScenarioLauncher). Same playback, same auto-passkey afterward.
+//
+// Both paths dedup via startedChallengeRef so HMR / SSE reconnect doesn't
+// re-trigger Melisa for a challenge already in flight.
 
 interface VoiceSessionProps {
-  // When the dashboard mounts in response to a Kapso WhatsApp deeplink,
-  // the kernel-side step_up.challenge_created event already fired before
-  // this client connected to the SSE bus, so we won't see it on the wire.
-  // Pass the challenge as a prop and we'll start Melisa directly.
   bootstrapChallenge?: StepUpChallengeView;
+  // Notified when Melisa starts/stops speaking. The dashboard blob wires
+  // this to a "speaking" pulse driver so the surface ripples in time with
+  // the audio — visual cue that the voice is coming THROUGH the blob.
+  onSpeakingChange?: (isSpeaking: boolean) => void;
 }
 
-export function VoiceSession({ bootstrapChallenge }: VoiceSessionProps = {}) {
-  return (
-    <ConversationProvider>
-      <VoiceSessionDriver bootstrapChallenge={bootstrapChallenge} />
-    </ConversationProvider>
-  );
-}
-
-function VoiceSessionDriver({ bootstrapChallenge }: VoiceSessionProps) {
+export function VoiceSession({
+  bootstrapChallenge,
+  onSpeakingChange
+}: VoiceSessionProps = {}) {
   const { events } = useEventStream();
   const startedChallengeRef = useRef<string | null>(null);
-
-  // Pre-warmed signed URL — fetched on mount so we save ~365ms when a
-  // step-up fires. Refreshed every ~10 minutes (signed URLs are valid
-  // for 15min by default) so it doesn't go stale on long-lived sessions.
-  const prewarmedSignedUrlRef = useRef<{
-    url: string;
-    fetchedAt: number;
-  } | null>(null);
-  const SIGNED_URL_TTL_MS = 10 * 60 * 1000;
-
-  // Pre-warm: signed URL + mic permission on mount, before any step-up
-  // fires. Killing ~500ms of perceived latency between blob → verifying
-  // and Melisa speaking.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Stable ref to the latest callback so the playback effect can read it
+  // without re-running every render.
+  const onSpeakingChangeRef = useRef(onSpeakingChange);
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/elevenlabs/signed-url", {
-          cache: "no-store"
-        });
-        if (!res.ok || cancelled) return;
-        const data = (await res.json()) as { signedUrl?: string };
-        if (data.signedUrl && !cancelled) {
-          prewarmedSignedUrlRef.current = {
-            url: data.signedUrl,
-            fetchedAt: Date.now()
-          };
-          console.log("[voice-session] signed url pre-warmed");
-        }
-      } catch {
-        /* best-effort, fall back to fetch-on-demand */
-      }
-    })();
+    onSpeakingChangeRef.current = onSpeakingChange;
+  }, [onSpeakingChange]);
 
-    // Pre-request mic permission. If already granted, this resolves
-    // instantly without showing a prompt. If never granted, the prompt
-    // appears now (when the user is ready) instead of mid-flow.
-    if (
-      typeof navigator !== "undefined" &&
-      navigator.mediaDevices?.getUserMedia
-    ) {
-      navigator.mediaDevices
-        .getUserMedia({ audio: true })
-        .then((stream) => {
-          // Release the stream immediately — we just wanted the
-          // permission grant cached. The SDK will request its own
-          // stream when the session actually starts.
-          stream.getTracks().forEach((t) => t.stop());
-          console.log("[voice-session] mic permission pre-warmed");
-        })
-        .catch(() => {
-          /* user denied or blocked; we'll surface the error when the
-             real session tries to start */
-        });
-    }
+  // Visual badge state — surfaces "Melisa hablando" while audio plays so
+  // the blob isn't the only signal during the ~1-2s gap between trigger
+  // and first audible word.
+  const [phase, setPhase] = useState<"idle" | "loading" | "playing" | "passkey">(
+    "idle"
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const conversation = useConversation({
-    onError: (err) => {
-      console.warn("[voice-session] sdk error", err);
-    },
-    onMessage: (msg) => {
-      const requestId = currentRequestIdRef.current;
-      if (!requestId || !msg?.message) return;
-      const role = msg.source === "user" ? "user" : "agent";
-      fetch("/api/voice/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId, role, text: msg.message })
-      }).catch(() => {
-        /* ignore */
-      });
-    }
-  });
-  const { startSession, endSession, status, isSpeaking } = conversation;
-
-  // Track the active requestId so onMessage can attach transcripts to the
-  // right conversation without a closure stale read.
-  const currentRequestIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    // Walk the rolling event window forward and react to the latest
-    // step_up.challenge_created we haven't started yet, or any terminal
-    // state that should close the session.
-    let latestChallenge: {
-      challengeId: string;
-      requestId: string;
-      prompt: string;
-      intent: string;
-    } | null = null;
-    let terminal:
-      | { challengeId: string; kind: "verified" | "canceled" }
-      | null = null;
-
-    // First pass: collect the original user intent for each requestId so
-    // we can hand it to ElevenLabs as a clean dynamic variable. The kernel's
-    // challenge prompt is technical voice-provider talk; intent is the
-    // user's plain-language ask ("Send 20 USDC to Juan…") which is what
-    // Melisa should actually paraphrase to the human.
-    const intentByRequestId = new Map<string, string>();
-    for (const e of events) {
-      if (e.type === "permission.request_started") {
-        intentByRequestId.set(e.requestId, e.intent);
-      }
-    }
-
-    for (const e of events) {
-      if (e.type === "step_up.challenge_created") {
-        // Voice is a narrator that runs in parallel to *any* step-up channel.
-        // The kernel emits channel: "passkey" today (see demoFixtures
-        // preferredStepUp), but Melisa should still speak — passkey is the
-        // authoritative auth, voice just confirms intent out loud.
-        latestChallenge = {
-          challengeId: e.challengeId,
-          requestId: e.requestId,
-          prompt: e.prompt,
-          intent: intentByRequestId.get(e.requestId) ?? ""
-        };
-        terminal = null;
-      } else if (e.type === "step_up.verified") {
-        if (latestChallenge?.challengeId === e.challengeId) {
-          terminal = { challengeId: e.challengeId, kind: "verified" };
-        }
-      } else if (e.type === "step_up.canceled") {
-        if (latestChallenge?.challengeId === e.challengeId) {
-          terminal = { challengeId: e.challengeId, kind: "canceled" };
-        }
-      }
-    }
-
-    if (
-      latestChallenge &&
-      !terminal &&
-      startedChallengeRef.current !== latestChallenge.challengeId
-    ) {
-      startedChallengeRef.current = latestChallenge.challengeId;
-      currentRequestIdRef.current = latestChallenge.requestId;
-      // Use the pre-warmed signed URL if it's still fresh — saves a
-      // ~365ms round-trip vs. fetching on demand.
-      const prewarmed = prewarmedSignedUrlRef.current;
-      const cachedUrl =
-        prewarmed && Date.now() - prewarmed.fetchedAt < SIGNED_URL_TTL_MS
-          ? prewarmed.url
-          : null;
-      startVoiceSession(startSession, latestChallenge, cachedUrl).catch(
-        (err) => {
-          console.error("[voice-session] failed to start", err);
-        }
-      );
-    }
-
-    if (
-      terminal &&
-      startedChallengeRef.current === terminal.challengeId
-    ) {
-      endSession();
-      startedChallengeRef.current = null;
-      currentRequestIdRef.current = null;
-    }
-  }, [events, startSession, endSession]);
-
-  // Bootstrap: when the dashboard hydrates from a Kapso WhatsApp deeplink,
-  // the kernel-side challenge_created event already fired before this client
-  // connected to the SSE bus, so the loop above never sees it. Kick off
-  // Melisa directly from the prop. The startedChallengeRef dedup ensures we
-  // don't double-start if a fresh SSE event for the same challenge arrives.
+  // Bootstrap path: dashboard hydrated from deeplink.
   useEffect(() => {
     if (!bootstrapChallenge) return;
     if (bootstrapChallenge.isTerminal) return;
     if (startedChallengeRef.current === bootstrapChallenge.challengeId) return;
-
     startedChallengeRef.current = bootstrapChallenge.challengeId;
-    currentRequestIdRef.current = bootstrapChallenge.requestId;
-
-    const prewarmed = prewarmedSignedUrlRef.current;
-    const cachedUrl =
-      prewarmed && Date.now() - prewarmed.fetchedAt < SIGNED_URL_TTL_MS
-        ? prewarmed.url
-        : null;
-
-    // intent is the plain-language ask for Melisa; the StepUpChallengeView
-    // doesn't carry the original user intent (only the kernel-derived
-    // actionPhrase) but actionPhrase is already the spoken summary the
-    // voice agent should reference, so it's a fine substitute here.
-    startVoiceSession(
-      startSession,
-      {
-        challengeId: bootstrapChallenge.challengeId,
-        requestId: bootstrapChallenge.requestId,
-        prompt: bootstrapChallenge.actionPhrase,
-        intent: bootstrapChallenge.actionPhrase
-      },
-      cachedUrl
-    ).catch((err) => {
-      console.error("[voice-session] bootstrap failed to start", err);
-    });
-    // bootstrapChallenge identity is stable within a single dashboard load;
-    // we deliberately depend only on its challengeId so repeated parent
-    // renders don't reset the dedup.
+    void runNarration(
+      bootstrapChallenge.challengeId,
+      "dashboard",
+      setPhase,
+      audioRef,
+      onSpeakingChangeRef
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootstrapChallenge?.challengeId]);
 
-  // Visual badge so the user has explicit feedback during the
-  // ~1-2s gap between step_up.challenge_created and Melisa's first
-  // audible word. Without this the blob is the only signal, and
-  // "verifying" can look static while the WebSocket is handshaking.
-  const isActive =
-    status === "connecting" || status === "connected" || isSpeaking;
-  const label = (() => {
-    if (status === "connecting") return "conectando voz";
-    if (isSpeaking) return "Melisa hablando";
-    if (status === "connected") return "escuchando";
-    return null;
-  })();
-  if (!isActive || !label) return null;
+  // SSE path: in-page demo scenarios (dev launcher). Walks the rolling
+  // window for the latest challenge_created we haven't started yet.
+  useEffect(() => {
+    let latestChallengeId: string | null = null;
+    let terminalForLatest = false;
+
+    for (const e of events) {
+      if (e.type === "step_up.challenge_created") {
+        latestChallengeId = e.challengeId;
+        terminalForLatest = false;
+      } else if (
+        (e.type === "step_up.verified" || e.type === "step_up.canceled") &&
+        latestChallengeId === e.challengeId
+      ) {
+        terminalForLatest = true;
+      }
+    }
+
+    if (
+      latestChallengeId &&
+      !terminalForLatest &&
+      startedChallengeRef.current !== latestChallengeId
+    ) {
+      startedChallengeRef.current = latestChallengeId;
+      void runNarration(
+        latestChallengeId,
+        "dashboard",
+        setPhase,
+        audioRef,
+        onSpeakingChangeRef
+      );
+    }
+  }, [events]);
+
+  // Cleanup on unmount — kill any in-flight audio so HMR / route changes
+  // don't leave Melisa speaking into the void.
+  useEffect(() => {
+    return () => {
+      const a = audioRef.current;
+      if (a) {
+        a.pause();
+        a.src = "";
+      }
+    };
+  }, []);
+
+  if (phase === "idle") return null;
+
+  const label =
+    phase === "loading"
+      ? "preparando voz"
+      : phase === "playing"
+      ? "Melisa hablando"
+      : "esperando huella";
+
   return (
     <div className="pointer-events-none fixed left-1/2 top-4 z-50 -translate-x-1/2">
       <div className="flex items-center gap-2 rounded-full border border-stepup/40 bg-bg/85 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-stepup shadow-lg backdrop-blur">
         <span
           className={
             "h-1.5 w-1.5 rounded-full " +
-            (isSpeaking
+            (phase === "playing"
               ? "animate-pulse bg-stepup"
-              : status === "connecting"
+              : phase === "loading"
               ? "animate-ping bg-stepup"
               : "bg-stepup/70")
           }
@@ -276,69 +148,91 @@ function VoiceSessionDriver({ bootstrapChallenge }: VoiceSessionProps) {
   );
 }
 
-async function startVoiceSession(
-  startSession: ReturnType<typeof useConversation>["startSession"],
-  challenge: {
-    challengeId: string;
-    requestId: string;
-    prompt: string;
-    intent: string;
-  },
-  cachedSignedUrl: string | null
+async function runNarration(
+  challengeId: string,
+  audience: "dashboard" | "whatsapp",
+  setPhase: (p: "idle" | "loading" | "playing" | "passkey") => void,
+  audioRef: React.MutableRefObject<HTMLAudioElement | null>,
+  onSpeakingChangeRef: React.MutableRefObject<((isSpeaking: boolean) => void) | undefined>
 ): Promise<void> {
-  console.time("[voice-session] start latency");
-  // 1. Mic permission. If pre-warmed on mount, this resolves instantly
-  //    without re-prompting; otherwise it asks the user.
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    // Release this probe — the SDK opens its own stream on startSession.
-    stream.getTracks().forEach((t) => t.stop());
-  } catch (err) {
-    console.warn("[voice-session] mic permission denied", err);
-    throw err;
+  setPhase("loading");
+
+  // Fetch the MP3. The endpoint is public and returns audio/mpeg directly,
+  // so we point an <audio> element at the URL and let the browser stream.
+  // Wrapping in <audio>.play() lets us await onended cleanly.
+  const audioUrl = `/api/step-up/voice/tts/${encodeURIComponent(
+    challengeId
+  )}?audience=${audience}`;
+
+  // Stop any previous instance before starting the new one (e.g. SSE
+  // arrives mid-bootstrap playback).
+  if (audioRef.current) {
+    audioRef.current.pause();
+    audioRef.current.src = "";
   }
 
-  // 2. Signed URL — use the pre-warmed one if available, otherwise
-  //    fetch fresh.
-  let signedUrl = cachedSignedUrl;
-  if (!signedUrl) {
-    console.log("[voice-session] no cached signed url, fetching");
-    const res = await fetch("/api/elevenlabs/signed-url", {
-      cache: "no-store"
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`signed-url failed: ${res.status} ${detail}`);
-    }
-    const data = (await res.json()) as { signedUrl?: string };
-    if (!data.signedUrl) throw new Error("no signed url in response");
-    signedUrl = data.signedUrl;
-  } else {
-    console.log("[voice-session] using pre-warmed signed url");
-  }
+  const audio = new Audio(audioUrl);
+  audio.preload = "auto";
+  audioRef.current = audio;
 
-  // 3. Start the websocket. The agent's system prompt is allowed to read
-  //    {{intent}} (plain-language, e.g. "Send 20 USDC to Juan…") but is
-  //    explicitly forbidden from reading {{phrase}} / {{action_hash}} —
-  //    those are kept only for audit / fallback context.
-  startSession({
-    signedUrl,
-    connectionType: "websocket",
-    dynamicVariables: {
-      challenge_id: challenge.challengeId,
-      action_hash: challenge.challengeId,
-      // Plain-language ask. Falls back to the kernel prompt if intent
-      // wasn't captured (shouldn't happen in the demo but be defensive).
-      intent: challenge.intent || challenge.prompt,
-      // Kept for backwards compat with the existing system prompt; the
-      // prompt is being updated to ignore these in favor of {{intent}}.
-      phrase: challenge.intent || challenge.prompt,
-      action_summary: challenge.intent || challenge.prompt
-    }
+  const playbackDone = new Promise<void>((resolve, reject) => {
+    audio.addEventListener("ended", () => resolve(), { once: true });
+    audio.addEventListener(
+      "error",
+      () => reject(new Error("audio playback failed")),
+      { once: true }
+    );
   });
-  console.timeEnd("[voice-session] start latency");
+
+  try {
+    setPhase("playing");
+    onSpeakingChangeRef.current?.(true);
+    await audio.play();
+    await playbackDone;
+  } catch (err) {
+    // Browser autoplay policy can reject .play() if there was no user
+    // gesture in the chain. The challenge persists in Redis; the user
+    // can still tap "Aceptar" in the StepUpVerificationCard manually.
+    console.warn("[voice-session] audio playback rejected", err);
+    onSpeakingChangeRef.current?.(false);
+    setPhase("idle");
+    return;
+  }
+
+  onSpeakingChangeRef.current?.(false);
+
+  // Audio finished cleanly → run the passkey ceremony directly. The OS
+  // dialog (Touch ID / Face ID / Windows Hello) shows; on success the
+  // server completes the step-up and resumes the wallet operation.
+  setPhase("passkey");
+  try {
+    await runPasskeyCeremony(challengeId);
+  } catch (err) {
+    console.warn("[voice-session] passkey ceremony failed", err);
+  } finally {
+    setPhase("idle");
+  }
 }
 
-// Avoid unused-var warnings for the type import (kept so future refactors
-// can switch to a typed pick if event shape grows).
-export type { KernelStreamEvent };
+async function runPasskeyCeremony(challengeId: string): Promise<void> {
+  const beginRes = await fetch("/api/step-up/passkey/begin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId })
+  });
+  if (!beginRes.ok) {
+    const detail = await beginRes.json().catch(() => ({}));
+    throw new Error(`begin failed: ${detail.error ?? beginRes.status}`);
+  }
+  const options = await beginRes.json();
+  const assertion = await startAuthentication(options);
+  const finishRes = await fetch("/api/step-up/passkey/finish", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ challengeId, response: assertion })
+  });
+  if (!finishRes.ok) {
+    const detail = await finishRes.json().catch(() => ({}));
+    throw new Error(`finish failed: ${detail.error ?? finishRes.status}`);
+  }
+}

@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react";
 import { ActivityPanel } from "@/components/activity-panel";
-import { AutoPasskeyTrigger } from "@/components/auto-passkey-trigger";
 import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
@@ -44,8 +43,13 @@ const PREVIEW_CYCLE: PreviewMode[] = [
 ];
 
 export function HomeShell({ username, pendingChallenge }: HomeShellProps) {
+  // VoiceSession reports its playback state up here so the blob can pulse
+  // in time with the audio. Lifted to HomeShell because useBlobState (and
+  // by extension the blob) lives at this level.
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const { state: liveState, pulseSeed } = useBlobState({
-    bootstrapChallenge: pendingChallenge
+    bootstrapChallenge: pendingChallenge,
+    isSpeaking
   });
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
 
@@ -228,8 +232,10 @@ export function HomeShell({ username, pendingChallenge }: HomeShellProps) {
       <PushToast onOpen={handleStepUpOpen} />
 
       {devLauncherOn && <DevScenarioLauncher />}
-      <VoiceSession bootstrapChallenge={pendingChallenge} />
-      <AutoPasskeyTrigger />
+      <VoiceSession
+        bootstrapChallenge={pendingChallenge}
+        onSpeakingChange={setIsSpeaking}
+      />
     </main>
   );
 }
