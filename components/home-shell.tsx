@@ -11,7 +11,6 @@ import { UserMenu } from "@/components/user-menu";
 import { VoiceSession } from "@/components/voice-session";
 import { WalletPanel } from "@/components/wallet-panel";
 import { WalletPendingAction } from "@/components/wallet-pending-action";
-import { WalletTrusted } from "@/components/wallet-trusted";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
 import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
 import { usePushSubscription } from "@/lib/hooks/use-push-subscription";
@@ -156,14 +155,6 @@ export function HomeShell({ username }: HomeShellProps) {
           <div className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2">
             <WalletPendingAction onStepUpClick={handleStepUpOpen} />
             <WalletPanel />
-          </div>
-          {/* PLA-44: trusted recurring services. Sits below the
-              pending-action / wallet grid because the entries read
-              vertically (logo + meta + auto-pay badge) and the panel is
-              tall — sharing a row with the wallet would force narrow
-              tiles. Full-width keeps the Apple-Subscriptions feel. */}
-          <div className="border-t border-border p-4">
-            <WalletTrusted />
           </div>
           {/* Optional chat slot — kept hidden by default, reveal when ready */}
           <div className="hidden">
