@@ -52,11 +52,19 @@ export function HomeShell({ username }: HomeShellProps) {
   // worker and subscribe to Web Push so the kernel can reach the device
   // when the browser is closed (PWA on iOS, idle Chrome on desktop, etc.).
   // The hook is no-op on unsupported browsers and idempotent on repeats.
+  //
+  // Skip when VAPID keys aren't configured (dev without
+  // NEXT_PUBLIC_VAPID_PUBLIC_KEY). Without keys the subscribe() call
+  // always 503s, and the SW still registers with `clients.claim()`,
+  // which can leave the page in a stuck state across refreshes —
+  // observed in dev when reloading the dashboard would never recover
+  // until the user closed the entire incognito window. Production
+  // deploys with VAPID configured opt back in automatically.
   const { subscribe: subscribePush } = usePushSubscription();
   useEffect(() => {
-    if (notifPermission === "granted") {
-      void subscribePush();
-    }
+    if (notifPermission !== "granted") return;
+    if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
+    void subscribePush();
   }, [notifPermission, subscribePush]);
 
   const isPreview = previewMode !== "live";
