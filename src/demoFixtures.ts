@@ -1,6 +1,8 @@
 import type { AgentActionRequest, TrackRecordEvent, UserTrustProfile } from "./domain/types";
 import { x402ContextFromEndpoint } from "./payments/x402";
 
+const DEMO_USER_ID = process.env.DEMO_USER_ID?.trim() || "user_alba";
+
 // Real address controlled by Tomás — the on-chain destination of the
 // "aligned" scenario (autonomous allow). Replaces a synthetic vanity
 // address so any USDC actually sent during the demo lands somewhere
@@ -18,7 +20,7 @@ export const demoUnknownCounterparty = "0x4a8b1c2d3e4f5061728394a5b6c7d8e9f00112
 export const demoClaimedNewRoute = "0x7d31c4b5a697887766554433221100ffeeddccbb";
 
 export const demoProfile: UserTrustProfile = {
-  userId: "user_alba",
+  userId: DEMO_USER_ID,
   conservatism: "balanced",
   trustedDevice: true,
   maxAutonomousSpend: { value: 75, currency: "USD" },
@@ -30,7 +32,7 @@ export const demoProfile: UserTrustProfile = {
 export const seedEvents: TrackRecordEvent[] = [
   event("evt_001", "2026-05-01T10:15:00.000Z", {
     requestId: "req_seed_001",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",
@@ -54,7 +56,7 @@ export const seedEvents: TrackRecordEvent[] = [
   }),
   event("evt_002", "2026-05-02T15:30:00.000Z", {
     requestId: "req_seed_002",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",
@@ -78,7 +80,7 @@ export const seedEvents: TrackRecordEvent[] = [
   }),
   event("evt_003", "2026-05-03T15:30:00.000Z", {
     requestId: "req_seed_003",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",
@@ -105,7 +107,7 @@ export const seedEvents: TrackRecordEvent[] = [
 export const demoRequests: AgentActionRequest[] = [
   {
     requestId: "req_demo_aligned_transfer",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",
@@ -129,7 +131,7 @@ export const demoRequests: AgentActionRequest[] = [
   },
   {
     requestId: "req_demo_recipient_swap",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",
@@ -152,7 +154,7 @@ export const demoRequests: AgentActionRequest[] = [
   },
   {
     requestId: "req_demo_amount_spike",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",
@@ -180,7 +182,7 @@ export const demoRequests: AgentActionRequest[] = [
   },
   {
     requestId: "req_demo_claimed_new_wallet",
-    userId: "user_alba",
+    userId: DEMO_USER_ID,
     agentId: "finance_agent",
     service: "wallet",
     action: "pay",

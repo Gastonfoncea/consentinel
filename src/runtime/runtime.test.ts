@@ -369,8 +369,56 @@ test("voice wallet transfer step-up queues a Kapso workflow execution when confi
       "https://api.kapso.ai/platform/v1/workflows/0a40a78b-3678-4cfd-a0b7-d27afe1a4de8/executions"
     );
     assert.match(calledBody, /"challenge_id":"voice_/);
-    assert.match(calledBody, /"phone_number":"\+5491111111111"/);
+    assert.match(calledBody, /"phone_number":"\+15550101111"/);
     assert.match(calledBody, /"operation_kind":"wallet_mock_execute_transfer"/);
+  } finally {
+    restoreKapsoEnv();
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("voice wallet transfer step-up prefers the challenge delivery target over DEMO_PHONE_E164", async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "runtime-kapso-target-phone-"));
+  try {
+    const runtime = makeRuntime(tempDir, {
+      profileOverride: {
+        preferredStepUp: "voice_biometric_callback",
+        phoneE164: "+5492222222222"
+      }
+    });
+
+    process.env.KAPSO_API_KEY = "kapso_test_key";
+    process.env.KAPSO_WORKFLOW_ID = "0a40a78b-3678-4cfd-a0b7-d27afe1a4de8";
+    process.env.KAPSO_API_BASE_URL = "https://api.kapso.ai/platform/v1";
+    process.env.DEMO_PHONE_E164 = "+5491111111111";
+
+    let calledBody = "";
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      calledBody = String(init?.body ?? "");
+
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: "kapso-exec-2",
+            tracking_id: "kapso-track-2",
+            workflow_id: process.env.KAPSO_WORKFLOW_ID,
+            message: "Workflow execution initiated"
+          }
+        }),
+        {
+          status: 202,
+          headers: {
+            "Content-Type": "application/json"
+          }
+        }
+      );
+    }) as typeof fetch;
+
+    const result = await runtime.mockExecuteWalletTransfer(demoRequests[3]!);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "step_up_required");
+    assert.equal(result.kapsoExecution?.status, "queued");
+    assert.match(calledBody, /"phone_number":"\+5492222222222"/);
   } finally {
     restoreKapsoEnv();
     rmSync(tempDir, { recursive: true, force: true });

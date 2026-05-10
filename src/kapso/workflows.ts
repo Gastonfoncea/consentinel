@@ -178,7 +178,7 @@ function getKapsoConfig():
 }
 
 function resolvePhoneNumber(challenge: StepUpChallenge) {
-  return process.env.DEMO_PHONE_E164?.trim() || challenge.deliveryTarget?.trim() || undefined;
+  return challenge.deliveryTarget?.trim() || process.env.DEMO_PHONE_E164?.trim() || undefined;
 }
 
 function withTrailingSlash(value: string) {

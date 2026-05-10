@@ -33,7 +33,7 @@
 - `KAPSO_API_KEY`
 - `KAPSO_WORKFLOW_ID`
 - Optional Kapso overrides: `KAPSO_API_BASE_URL`, `KAPSO_PHONE_NUMBER_ID`, `KAPSO_WHATSAPP_CONFIG_ID`
-- `DEMO_PHONE_E164` and `USERNAME` so MCP wallet requests carry the real phone/user context outside a logged-in browser session
+- `DEMO_PHONE_E164`, `DEMO_USER_ID`, and `DEMO_USERNAME` so MCP wallet requests carry the real phone/user context outside a logged-in browser session
 
 ## Local verification
 

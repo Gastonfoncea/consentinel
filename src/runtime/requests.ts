@@ -3,7 +3,7 @@ import { demoProfile } from "../demoFixtures";
 import type { AgentActionRequest, CounterpartyRouteTrust, PermissionContext } from "../domain/types";
 
 function buildDemoRequestMetadata() {
-  const username = process.env.USERNAME?.trim();
+  const username = process.env.DEMO_USERNAME?.trim() || process.env.USERNAME?.trim();
   if (!username) {
     return undefined;
   }
