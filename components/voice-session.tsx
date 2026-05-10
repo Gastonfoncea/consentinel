@@ -7,6 +7,7 @@ import {
 } from "@elevenlabs/react";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import type { KernelStreamEvent } from "@/lib/events/types";
+import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 
 // VoiceSession — invisible glue between the kernel runtime's SSE feed and
 // the @elevenlabs/react browser SDK. When the kernel emits a
@@ -18,15 +19,23 @@ import type { KernelStreamEvent } from "@/lib/events/types";
 //
 // This component renders nothing — it just owns the SDK lifecycle.
 
-export function VoiceSession() {
+interface VoiceSessionProps {
+  // When the dashboard mounts in response to a Kapso WhatsApp deeplink,
+  // the kernel-side step_up.challenge_created event already fired before
+  // this client connected to the SSE bus, so we won't see it on the wire.
+  // Pass the challenge as a prop and we'll start Melisa directly.
+  bootstrapChallenge?: StepUpChallengeView;
+}
+
+export function VoiceSession({ bootstrapChallenge }: VoiceSessionProps = {}) {
   return (
     <ConversationProvider>
-      <VoiceSessionDriver />
+      <VoiceSessionDriver bootstrapChallenge={bootstrapChallenge} />
     </ConversationProvider>
   );
 }
 
-function VoiceSessionDriver() {
+function VoiceSessionDriver({ bootstrapChallenge }: VoiceSessionProps) {
   const { events } = useEventStream();
   const startedChallengeRef = useRef<string | null>(null);
 
@@ -193,6 +202,47 @@ function VoiceSessionDriver() {
       currentRequestIdRef.current = null;
     }
   }, [events, startSession, endSession]);
+
+  // Bootstrap: when the dashboard hydrates from a Kapso WhatsApp deeplink,
+  // the kernel-side challenge_created event already fired before this client
+  // connected to the SSE bus, so the loop above never sees it. Kick off
+  // Melisa directly from the prop. The startedChallengeRef dedup ensures we
+  // don't double-start if a fresh SSE event for the same challenge arrives.
+  useEffect(() => {
+    if (!bootstrapChallenge) return;
+    if (bootstrapChallenge.isTerminal) return;
+    if (startedChallengeRef.current === bootstrapChallenge.challengeId) return;
+
+    startedChallengeRef.current = bootstrapChallenge.challengeId;
+    currentRequestIdRef.current = bootstrapChallenge.requestId;
+
+    const prewarmed = prewarmedSignedUrlRef.current;
+    const cachedUrl =
+      prewarmed && Date.now() - prewarmed.fetchedAt < SIGNED_URL_TTL_MS
+        ? prewarmed.url
+        : null;
+
+    // intent is the plain-language ask for Melisa; the StepUpChallengeView
+    // doesn't carry the original user intent (only the kernel-derived
+    // actionPhrase) but actionPhrase is already the spoken summary the
+    // voice agent should reference, so it's a fine substitute here.
+    startVoiceSession(
+      startSession,
+      {
+        challengeId: bootstrapChallenge.challengeId,
+        requestId: bootstrapChallenge.requestId,
+        prompt: bootstrapChallenge.actionPhrase,
+        intent: bootstrapChallenge.actionPhrase
+      },
+      cachedUrl
+    ).catch((err) => {
+      console.error("[voice-session] bootstrap failed to start", err);
+    });
+    // bootstrapChallenge identity is stable within a single dashboard load;
+    // we deliberately depend only on its challengeId so repeated parent
+    // renders don't reset the dedup.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootstrapChallenge?.challengeId]);
 
   // Visual badge so the user has explicit feedback during the
   // ~1-2s gap between step_up.challenge_created and Melisa's first
