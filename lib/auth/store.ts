@@ -29,16 +29,19 @@ declare global {
 
 // Persistence path. Same data/runtime/ tree the kernel uses for
 // durable-events.jsonl + pending-stepups.json so a single .gitignore
-// covers all dev state. On Vercel this would land in the ephemeral
-// /tmp; CLAUDE.md flags Vercel KV (or similar) as the production path.
-// For dev on localhost this gives us "register passkey once, survive
-// dev-server restarts" which is what we actually need to demo.
-const STORE_PATH = path.join(
-  process.cwd(),
-  "data",
-  "runtime",
-  "users.json"
-);
+// covers all dev state. On Vercel the filesystem is read-only outside
+// /tmp, so we redirect there when running serverless — mirrors what
+// src/runtime/repositories.ts does. /tmp survives within a warm
+// lambda but cold starts wipe it; Vercel KV is the post-hack target
+// per CLAUDE.md. Locally this lands in the repo's data/runtime/ and
+// survives dev-server restarts, which is what we need for the demo.
+function resolveStorePath(): string {
+  const isServerless = !!(process.env.VERCEL || process.env.NOW_REGION);
+  const root = isServerless ? "/tmp" : process.cwd();
+  return path.join(root, "data", "runtime", "users.json");
+}
+
+const STORE_PATH = resolveStorePath();
 
 interface SerializedCredential {
   id: string;
