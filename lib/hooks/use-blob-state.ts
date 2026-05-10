@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BlobState } from "@/components/presence-blob";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
+import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 
 // Minimum time a "decisive" state (allow / deny / verifying) holds before
 // lower-priority events can demote it. Catches the kernel's burst of events
@@ -83,16 +84,30 @@ interface BlobSignal {
  *   runtime.error                     → "deny"
  *   silence / ping                    → "idle"
  */
-export function useBlobState(): BlobSignal {
+interface UseBlobStateOptions {
+  // When the dashboard is bootstrapped from a Kapso WhatsApp deeplink, the
+  // step-up challenge already exists in kernel state but the SSE buffer
+  // for this client is empty (cold connect). Seed the blob into "verifying"
+  // immediately so it doesn't sit "idle" while VoiceSession wakes Melisa.
+  bootstrapChallenge?: StepUpChallengeView;
+}
+
+export function useBlobState(options: UseBlobStateOptions = {}): BlobSignal {
+  const { bootstrapChallenge } = options;
   const { events } = useEventStream();
-  const [state, setState] = useState<BlobState>("idle");
+  // Seed: terminal challenges (completed/rejected/expired) don't override
+  // idle — the user already finished or it's stale. Active challenges
+  // start the blob in "verifying" so the deeplink lands cinematically.
+  const initialState: BlobState =
+    bootstrapChallenge && !bootstrapChallenge.isTerminal ? "verifying" : "idle";
+  const [state, setState] = useState<BlobState>(initialState);
   const [pulseSeed, setPulseSeed] = useState(0);
   const lastEventIndexRef = useRef(-1);
   // Mirror of `state` readable synchronously inside the events effect, so
   // we evaluate priority/min-hold against the current value without the
   // stale-closure dance of putting `state` in the dep array.
-  const stateRef = useRef<BlobState>("idle");
-  const stateEnteredAtRef = useRef(0);
+  const stateRef = useRef<BlobState>(initialState);
+  const stateEnteredAtRef = useRef(initialState === "idle" ? 0 : Date.now());
   // Strongest deferred target seen during MIN_THINKING_MS, applied on
   // flush. Null when nothing is pending.
   const pendingNextRef = useRef<BlobState | null>(null);

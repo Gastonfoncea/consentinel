@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEventStream } from "@/lib/hooks/use-event-stream";
 import type { KernelStreamEvent } from "@/lib/events/types";
+import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 import { cn } from "@/lib/utils";
 
 // PLA-43 — Pending Action card.
@@ -32,6 +33,11 @@ interface WalletPendingActionProps {
   // Wired by the parent (HomeShell) to whatever opens the verification
   // modal. Until PLA-38 lands the modal, it just logs.
   onStepUpClick?: (requestId: string) => void;
+  // Optional pre-existing step-up challenge passed in when the dashboard
+  // is hydrated from a Kapso WhatsApp deeplink. Lets the card render its
+  // step_up state immediately, before any SSE event arrives — same idea
+  // as the bootstrap path in VoiceSession and useBlobState.
+  bootstrapChallenge?: StepUpChallengeView;
 }
 
 type ActionStatus = "pending" | "step_up" | "allow" | "deny";
@@ -54,17 +60,29 @@ type DisplayedAction = { status: "idle" } | ActiveAction;
 const TERMINAL_DECAY_MS = 6000;
 const BASESCAN_TX_URL = "https://sepolia.basescan.org/tx/";
 
-export function WalletPendingAction({ onStepUpClick }: WalletPendingActionProps) {
+export function WalletPendingAction({
+  onStepUpClick,
+  bootstrapChallenge
+}: WalletPendingActionProps) {
   const { events } = useEventStream();
-  const derived = useMemo(() => deriveAction(events), [events]);
+  const derived = useMemo(
+    () => deriveAction(events, bootstrapChallenge),
+    [events, bootstrapChallenge]
+  );
 
   // Hold/decay logic — once a terminal state shows up, keep it for
   // TERMINAL_DECAY_MS before fading back to idle. Without this the card
   // would snap to idle the moment the kernel emits unrelated follow-up
   // events (e.g. a fresh ping).
-  const [displayed, setDisplayed] = useState<DisplayedAction>({
-    status: "idle"
-  });
+  const initialDisplayed: DisplayedAction =
+    bootstrapChallenge && !bootstrapChallenge.isTerminal
+      ? {
+          status: "step_up",
+          requestId: bootstrapChallenge.requestId,
+          summary: bootstrapChallenge.spokenOperationSummary
+        }
+      : { status: "idle" };
+  const [displayed, setDisplayed] = useState<DisplayedAction>(initialDisplayed);
   const decayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -260,7 +278,10 @@ function labelForStatus(status: ActionStatus): string {
 // status + summary. Priority order matters: an `executed` event always
 // wins over `step_up`, etc.
 
-function deriveAction(events: KernelStreamEvent[]): DisplayedAction {
+function deriveAction(
+  events: KernelStreamEvent[],
+  bootstrapChallenge?: StepUpChallengeView
+): DisplayedAction {
   let activeRequestId: string | null = null;
   let activeIntent = "";
 
@@ -271,6 +292,18 @@ function deriveAction(events: KernelStreamEvent[]): DisplayedAction {
       activeIntent = e.intent;
       break;
     }
+  }
+
+  // Cold-load fallback: no SSE events for this client yet, but the page
+  // was hydrated from a Kapso deeplink — show the bootstrap challenge as
+  // the active step-up so the card doesn't sit idle while the user
+  // listens to Melisa.
+  if (!activeRequestId && bootstrapChallenge && !bootstrapChallenge.isTerminal) {
+    return {
+      status: "step_up",
+      requestId: bootstrapChallenge.requestId,
+      summary: bootstrapChallenge.spokenOperationSummary
+    };
   }
 
   if (!activeRequestId) return { status: "idle" };

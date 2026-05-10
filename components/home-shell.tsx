@@ -8,6 +8,7 @@ import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { PushToast } from "@/components/push-toast";
+import { StepUpVerificationCard } from "@/components/step-up-verification-card";
 import { UserMenu } from "@/components/user-menu";
 import { VoiceSession } from "@/components/voice-session";
 import { WalletPanel } from "@/components/wallet-panel";
@@ -15,11 +16,18 @@ import { WalletPendingAction } from "@/components/wallet-pending-action";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
 import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
 import { usePushSubscription } from "@/lib/hooks/use-push-subscription";
+import type { StepUpChallengeView } from "@/lib/step-up/challenge-view";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 
 interface HomeShellProps {
   username: string;
+  // Optional pending step-up the dashboard is being asked to walk the
+  // user through — set when arriving from a Kapso WhatsApp deeplink
+  // (`/dashboard?challenge=<handoffCode>`). When present, the shell
+  // mounts the verification card immediately and tells the voice session
+  // to start Melisa without waiting for the SSE bus.
+  pendingChallenge?: StepUpChallengeView;
 }
 
 // Preview cycle: "live" plays whatever the kernel event stream emits.
@@ -35,8 +43,10 @@ const PREVIEW_CYCLE: PreviewMode[] = [
   "deny",
 ];
 
-export function HomeShell({ username }: HomeShellProps) {
-  const { state: liveState, pulseSeed } = useBlobState();
+export function HomeShell({ username, pendingChallenge }: HomeShellProps) {
+  const { state: liveState, pulseSeed } = useBlobState({
+    bootstrapChallenge: pendingChallenge
+  });
   const [previewMode, setPreviewMode] = useState<PreviewMode>("live");
 
   // TEMP: opt-in scenario launcher on prod via ?dev=1 in the URL.
@@ -184,8 +194,21 @@ export function HomeShell({ username }: HomeShellProps) {
               </button>
             )}
           </div>
+          {/* Sidecar that appears when the user lands here from a Kapso
+              WhatsApp deeplink. Stacks below the blob on mobile, sits right
+              above the wallet cards on desktop — so the blob remains hero,
+              and the verification card is the next thing the eye lands on
+              while Melisa starts narrating. */}
+          {pendingChallenge && (
+            <div className="border-t border-border p-4">
+              <StepUpVerificationCard initialChallenge={pendingChallenge} />
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2">
-            <WalletPendingAction onStepUpClick={handleStepUpOpen} />
+            <WalletPendingAction
+              onStepUpClick={handleStepUpOpen}
+              bootstrapChallenge={pendingChallenge}
+            />
             <WalletPanel />
           </div>
           {/* Optional chat slot — kept hidden by default, reveal when ready */}
@@ -204,7 +227,7 @@ export function HomeShell({ username }: HomeShellProps) {
       <PushToast onOpen={handleStepUpOpen} />
 
       {devLauncherOn && <DevScenarioLauncher />}
-      <VoiceSession />
+      <VoiceSession bootstrapChallenge={pendingChallenge} />
       <AutoPasskeyTrigger />
     </main>
   );
