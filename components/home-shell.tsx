@@ -2,15 +2,16 @@
 
 import { useCallback, useState } from "react";
 import { ActivityPanel } from "@/components/activity-panel";
+import { AutoPasskeyTrigger } from "@/components/auto-passkey-trigger";
 import { ChatPanel } from "@/components/chat-panel";
 import { DevScenarioLauncher } from "@/components/dev-scenario-launcher";
 import { NotificationPermissionBanner } from "@/components/notification-permission-banner";
-import { PhoneMock } from "@/components/phone-mock";
 import { PresenceBlob, type BlobState } from "@/components/presence-blob";
 import { PushToast } from "@/components/push-toast";
 import { UserMenu } from "@/components/user-menu";
 import { VoiceSession } from "@/components/voice-session";
 import { WalletPanel } from "@/components/wallet-panel";
+import { WalletPendingAction } from "@/components/wallet-pending-action";
 import { useBlobState } from "@/lib/hooks/use-blob-state";
 import { useDesktopNotification } from "@/lib/hooks/use-desktop-notification";
 import { usePushSubscription } from "@/lib/hooks/use-push-subscription";
@@ -52,11 +53,19 @@ export function HomeShell({ username }: HomeShellProps) {
   // worker and subscribe to Web Push so the kernel can reach the device
   // when the browser is closed (PWA on iOS, idle Chrome on desktop, etc.).
   // The hook is no-op on unsupported browsers and idempotent on repeats.
+  //
+  // Skip when VAPID keys aren't configured (dev without
+  // NEXT_PUBLIC_VAPID_PUBLIC_KEY). Without keys the subscribe() call
+  // always 503s, and the SW still registers with `clients.claim()`,
+  // which can leave the page in a stuck state across refreshes —
+  // observed in dev when reloading the dashboard would never recover
+  // until the user closed the entire incognito window. Production
+  // deploys with VAPID configured opt back in automatically.
   const { subscribe: subscribePush } = usePushSubscription();
   useEffect(() => {
-    if (notifPermission === "granted") {
-      void subscribePush();
-    }
+    if (notifPermission !== "granted") return;
+    if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) return;
+    void subscribePush();
   }, [notifPermission, subscribePush]);
 
   const isPreview = previewMode !== "live";
@@ -145,7 +154,7 @@ export function HomeShell({ username }: HomeShellProps) {
             )}
           </div>
           <div className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-2">
-            <PhoneMock />
+            <WalletPendingAction onStepUpClick={handleStepUpOpen} />
             <WalletPanel />
           </div>
           {/* Optional chat slot — kept hidden by default, reveal when ready */}
@@ -165,6 +174,7 @@ export function HomeShell({ username }: HomeShellProps) {
 
       {process.env.NODE_ENV === "development" && <DevScenarioLauncher />}
       <VoiceSession />
+      <AutoPasskeyTrigger />
     </main>
   );
 }

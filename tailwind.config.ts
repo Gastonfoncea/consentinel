@@ -26,6 +26,10 @@ const config: Config = {
         // the bubble's idle colorA so chrome and product feel like the
         // same family without colliding with the kernel state palette.
         accent: "#67B7D8",
+        // Amber for "pending evaluation" — kernel has the request but
+        // hasn't decided yet. Distinct from stepup blue so the user
+        // reads the lifecycle as yellow → blue → green/red.
+        warn: "#F5C242",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
@@ -36,6 +40,7 @@ const config: Config = {
         "glow-deny": "0 0 16px rgba(255, 59, 48, 0.45)",
         "glow-stepup": "0 0 16px rgba(59, 130, 246, 0.45)",
         "glow-accent": "0 0 24px rgba(103, 183, 216, 0.35)",
+        "glow-warn": "0 0 16px rgba(245, 194, 66, 0.45)",
       },
     },
   },
