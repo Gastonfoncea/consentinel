@@ -55,7 +55,7 @@ export function buildHandoffCode(): string {
 }
 
 export function buildWhatsAppVerificationUrl(handoffCode: string): string {
-  return new URL(`/v/${handoffCode}`, RP_ORIGIN).toString();
+  return new URL(`/dashboard?challenge=${handoffCode}`, RP_ORIGIN).toString();
 }
 
 export function buildSpokenOperationSummary(request: AgentActionRequest): string {

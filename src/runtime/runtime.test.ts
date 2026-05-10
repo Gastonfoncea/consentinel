@@ -284,7 +284,11 @@ test("voice step-up requires phone confirmation before app verification", async 
   assert.equal(result.challenge?.channel, "voice_biometric_callback");
   assert.equal(result.challenge?.deliveryChannel, "whatsapp");
   assert.ok(result.challenge?.handoffCode);
-  assert.ok(result.challenge?.whatsappVerificationUrl.endsWith(`/v/${result.challenge?.handoffCode}`));
+  assert.ok(
+    result.challenge?.whatsappVerificationUrl.endsWith(
+      `/dashboard?challenge=${result.challenge?.handoffCode}`
+    )
+  );
   assert.equal(result.challenge?.spokenOperationSummary, "enviar 20 USDC a Juan");
   assert.equal(result.challenge?.spokenRiskHint, "usando un destino nuevo");
 
