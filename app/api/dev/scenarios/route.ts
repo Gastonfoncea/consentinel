@@ -1,4 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
+import type { Address } from "viem";
 import { demoRequests } from "@/src/demoFixtures";
 import { getSharedKernelRuntime } from "@/src/runtime/runtime";
 import { getSession } from "@/lib/auth/session";
@@ -14,6 +16,19 @@ const SCENARIOS: Record<string, number> = {
   amount_spike: 2,
   claimed_new_wallet: 3,
 };
+
+// Scenarios that rely on the kernel seeing a *fresh, unseen*
+// destination address. claimed_new_wallet's whole point is "the agent
+// is sending to a new route the user never used before" — the signal
+// that flips the decision from autonomous-allow to step_up. With a
+// fixed fixture address, the kernel learns it after 2-3 successful
+// confirmations and the demo's voice+passkey flow stops firing. We
+// randomise the counterparty per fire so each demo run is fresh.
+const SCENARIOS_WITH_FRESH_DESTINATION = new Set(["claimed_new_wallet"]);
+
+function randomEvmAddress(): Address {
+  return ("0x" + randomBytes(20).toString("hex")) as Address;
+}
 
 export async function POST(req: Request) {
   if (process.env.NODE_ENV === "production") {
@@ -45,15 +60,19 @@ export async function POST(req: Request) {
   // session.
   const session = await getSession();
   const sessionUsername = session.username;
-  const requestForKernel = sessionUsername
-    ? {
-        ...fixture,
-        metadata: {
-          ...(fixture.metadata ?? {}),
-          username: sessionUsername,
-        },
-      }
-    : fixture;
+  // Build the request for the kernel: optional username injection +
+  // optional fresh-destination randomization (see comment above).
+  const counterparty = SCENARIOS_WITH_FRESH_DESTINATION.has(body.scenario!)
+    ? randomEvmAddress()
+    : fixture.counterparty;
+  const requestForKernel = {
+    ...fixture,
+    counterparty,
+    metadata: {
+      ...(fixture.metadata ?? {}),
+      ...(sessionUsername ? { username: sessionUsername } : {}),
+    },
+  };
 
   const result = await kernelRuntime.mockExecuteWalletTransfer(requestForKernel);
   return NextResponse.json({ scenario: body.scenario, result });
